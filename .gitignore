@@ -2,4 +2,4 @@
 *.swp
 *.jar
 .spotless*
-target/
+target/*

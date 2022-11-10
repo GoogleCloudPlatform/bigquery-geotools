@@ -32,6 +32,9 @@ public class BigqueryDataStore extends ContentDataStore {
     private String projectId;
     private String datasetName;
 
+    public static final String GEOM_COLUMN = "geom";
+    public static final int SRID = 4326;
+
     /**
      * Construct a BigqueryDatastore for a given project and dataset.
      *
@@ -54,7 +57,9 @@ public class BigqueryDataStore extends ContentDataStore {
         try {
             Page<Table> tables = bq.listTables(this.datasetName, TableListOption.pageSize(100));
             for (Table table : tables.iterateAll()) {
-                if (null != getTableGeometryColumn(table)) {
+                Table hydratedTable = bq.getTable(table.getTableId());
+                Schema schema = hydratedTable.getDefinition().getSchema();
+                if (null != getTableGeometryColumn(schema)) {
                     typeNames.add(new NameImpl(getTableName(table.getGeneratedId())));
                 }
             }
@@ -71,9 +76,7 @@ public class BigqueryDataStore extends ContentDataStore {
         return parts[parts.length - 1];
     }
 
-    protected String getTableGeometryColumn(Table table) {
-        Table hydratedTable = bq.getTable(table.getTableId());
-        Schema schema = hydratedTable.getDefinition().getSchema();
+    protected String getTableGeometryColumn(Schema schema) {
         FieldList fields = schema.getFields();
         for (Field field : fields) {
             StandardSQLTypeName fieldType = field.getType().getStandardType();

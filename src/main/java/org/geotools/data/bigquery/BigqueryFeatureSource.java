@@ -54,7 +54,6 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         BigQuery bq = table.getBigQuery();
 
         String sql = "SELECT ST_EXTENT(geom) as extent FROM `" + sqlTable + "`";
-        System.out.println(sql);
         QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(sql).build();
         try {
             TableResult results = bq.query(queryConfig);
@@ -84,7 +83,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
     @Override
     protected FeatureReader<SimpleFeatureType, SimpleFeature> getReaderInternal(Query query)
             throws IOException {
-        return (FeatureReader<SimpleFeatureType, SimpleFeature>) new BigqueryFeatureReader(getState(), table, query);
+        return new BigqueryFeatureReader(getState(), table, query);
     }
 
     @Override

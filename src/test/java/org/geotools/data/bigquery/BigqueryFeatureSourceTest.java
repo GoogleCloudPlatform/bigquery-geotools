@@ -22,6 +22,6 @@ public class BigqueryFeatureSourceTest {
 
         SimpleFeatureCollection col = fs.getFeatures();
 
-        System.out.println(col.size());
+        // System.out.println(col.size());
     }
 }
