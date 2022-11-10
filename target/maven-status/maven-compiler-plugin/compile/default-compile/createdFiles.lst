@@ -1,0 +1,4 @@
+org/geotools/data/bigquery/BigqueryDataStore.class
+org/geotools/data/bigquery/BigqueryDataStoreFactory.class
+org/geotools/data/bigquery/BigqueryFeatureReader.class
+org/geotools/data/bigquery/BigqueryFeatureSource.class

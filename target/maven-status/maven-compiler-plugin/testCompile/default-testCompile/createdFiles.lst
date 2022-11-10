@@ -1,0 +1,3 @@
+org/geotools/data/bigquery/GoogleSDKTest.class
+org/geotools/data/bigquery/BigqueryFeatureSourceTest.class
+org/geotools/data/bigquery/BigqueryDataStoreTest.class

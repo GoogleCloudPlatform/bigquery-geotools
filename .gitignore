@@ -1,0 +1,5 @@
+*.class
+*.swp
+*.jar
+.spotless*
+target/

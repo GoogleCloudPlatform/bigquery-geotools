@@ -1,1 +1,3 @@
-/Users/traviswebb/workspace/bigquery-geotools/src/test/java/org/geotools/bigquery_geotools/AppTest.java
+/Users/traviswebb/workspace/bigquery-geotools/src/test/java/org/geotools/data/bigquery/BigqueryDataStoreTest.java
+/Users/traviswebb/workspace/bigquery-geotools/src/test/java/org/geotools/data/bigquery/BigqueryFeatureSourceTest.java
+/Users/traviswebb/workspace/bigquery-geotools/src/test/java/org/geotools/data/bigquery/GoogleSDKTest.java
