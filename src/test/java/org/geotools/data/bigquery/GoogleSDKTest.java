@@ -4,7 +4,6 @@ import static org.junit.Assert.assertTrue;
 
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryOptions;
-import com.google.cloud.bigquery.FieldValueList;
 import com.google.cloud.bigquery.Job;
 import com.google.cloud.bigquery.JobId;
 import com.google.cloud.bigquery.JobInfo;
@@ -45,16 +44,6 @@ public class GoogleSDKTest {
         }
 
         TableResult result = queryJob.getQueryResults();
-
-        for (FieldValueList row : result.iterateAll()) {
-            String commit = row.get("commit").getStringValue();
-
-            FieldValueList author = row.get("author").getRecordValue();
-            String name = author.get("name").getStringValue();
-            String email = author.get("email").getStringValue();
-
-            String repoName = row.get("repo_name").getRecordValue().get(0).getStringValue();
-        }
         assertTrue(result.getTotalRows() == 10);
     }
 

@@ -121,6 +121,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
             }
             // skipping BYTES, ARRAY, INTERVAL, JSON, STRUCT
         }
+        builder.setDefaultGeometry(BigqueryDataStore.GEOM_COLUMN);
         return builder.buildFeatureType();
     }
 }

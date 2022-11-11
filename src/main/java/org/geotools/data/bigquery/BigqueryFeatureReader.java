@@ -30,7 +30,6 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     protected Schema schema;
     protected FieldList fields;
     protected Iterator<FieldValueList> cursor;
-    protected SimpleFeatureBuilder builder;
     protected GeometryFactory gf;
 
     public BigqueryFeatureReader(ContentState state, Table table, Query query) {
@@ -42,7 +41,6 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
 
         this.cursor = page.iterateAll().iterator();
         this.state = state;
-        this.builder = new SimpleFeatureBuilder(state.getFeatureType());
         this.gf = JTSFactoryFinder.getGeometryFactory(null);
     }
 
@@ -59,6 +57,8 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     }
 
     public SimpleFeature readFeature(FieldValueList row) throws IOException {
+        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(state.getFeatureType());
+
         for (Field field : fields) {
             String column = field.getName();
             if (column == "geom") continue;
@@ -72,10 +72,10 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
             Geometry geom = new WKTReader().read(geomWkt);
             geom.setSRID(BigqueryDataStore.SRID);
             builder.set(BigqueryDataStore.GEOM_COLUMN, geom);
-            return builder.buildFeature(UUID.randomUUID().toString());
         } catch (ParseException e) {
             throw new IOException(e);
         }
+        return builder.buildFeature(UUID.randomUUID().toString());
     }
 
     @Override

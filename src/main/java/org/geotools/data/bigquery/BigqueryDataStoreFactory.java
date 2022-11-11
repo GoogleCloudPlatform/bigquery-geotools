@@ -1,5 +1,6 @@
 package org.geotools.data.bigquery;
 
+import com.google.cloud.bigquery.BigQueryException;
 import java.io.IOException;
 import java.util.Map;
 import org.geotools.data.DataStore;
@@ -32,8 +33,12 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     @Override
     public DataStore createDataStore(Map<String, ?> params) throws IOException {
-        return new BigqueryDataStore(
-                (String) params.get("projectId"), (String) params.get("datasetName"));
+        try {
+            return new BigqueryDataStore(
+                    (String) params.get("projectId"), (String) params.get("datasetName"));
+        } catch (BigQueryException e) {
+            throw new IOException(e);
+        }
     }
 
     @Override
