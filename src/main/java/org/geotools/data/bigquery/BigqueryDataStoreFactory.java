@@ -8,6 +8,8 @@ import org.geotools.data.DataStoreFactorySpi;
 
 public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
+    public BigqueryDataStoreFactory() {}
+
     @Override
     public String getDisplayName() {
         return "BigQuery";
