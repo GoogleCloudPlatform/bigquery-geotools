@@ -1,23 +1,31 @@
 package org.geotools.data.bigquery;
 
-import com.google.api.gax.paging.Page;
-import com.google.cloud.bigquery.BigQuery.TableDataListOption;
-import com.google.cloud.bigquery.Field;
-import com.google.cloud.bigquery.FieldList;
-import com.google.cloud.bigquery.FieldValueList;
-import com.google.cloud.bigquery.Schema;
-import com.google.cloud.bigquery.Table;
+import com.google.api.gax.rpc.ServerStream;
+import com.google.cloud.bigquery.storage.v1.AvroRows;
+import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
+import com.google.cloud.bigquery.storage.v1.CreateReadSessionRequest;
+import com.google.cloud.bigquery.storage.v1.DataFormat;
+import com.google.cloud.bigquery.storage.v1.ReadRowsRequest;
+import com.google.cloud.bigquery.storage.v1.ReadRowsResponse;
+import com.google.cloud.bigquery.storage.v1.ReadSession;
+import com.google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions;
+import com.google.common.base.Preconditions;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.List;
 import java.util.NoSuchElementException;
-import java.util.UUID;
+import org.apache.avro.Schema;
+import org.apache.avro.generic.GenericDatumReader;
+import org.apache.avro.generic.GenericRecord;
+import org.apache.avro.io.BinaryDecoder;
+import org.apache.avro.io.DatumReader;
+import org.apache.avro.io.DecoderFactory;
 import org.geotools.data.Query;
 import org.geotools.data.simple.SimpleFeatureReader;
 import org.geotools.data.store.ContentState;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.geometry.jts.JTSFactoryFinder;
 import org.locationtech.jts.geom.Geometry;
-import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.io.ParseException;
 import org.locationtech.jts.io.WKTReader;
 import org.opengis.feature.simple.SimpleFeature;
@@ -25,48 +33,99 @@ import org.opengis.feature.simple.SimpleFeatureType;
 
 public class BigqueryFeatureReader implements SimpleFeatureReader {
 
+    private SimpleFeatureType featureType;
     protected ContentState state;
-    protected Table table;
-    protected Schema schema;
-    protected FieldList fields;
-    protected Iterator<FieldValueList> cursor;
-    protected GeometryFactory gf;
+    private int rowIndex;
 
-    public BigqueryFeatureReader(ContentState state, Table table, Query query) {
-        this.table = table;
-        this.schema = table.getDefinition().getSchema();
-        this.fields = schema.getFields();
+    private ServerStream<ReadRowsResponse> stream;
+    private Iterator<ReadRowsResponse> streamIterator;
 
-        Page<FieldValueList> page = table.list(schema, TableDataListOption.pageSize(100));
+    private final BigqueryAvroReader reader;
 
-        this.cursor = page.iterateAll().iterator();
+    /**
+     * Set up BigQuery Storage API read session
+     *
+     * @param state
+     * @param tableId
+     * @param query
+     * @throws IOException
+     */
+    public BigqueryFeatureReader(
+            ContentState state, String projectUri, String tableUri, Query query)
+            throws IOException {
         this.state = state;
-        this.gf = JTSFactoryFinder.getGeometryFactory(null);
+        this.rowIndex = -1;
+        this.featureType = state.getFeatureType();
+
+        BigQueryReadClient client = BigQueryReadClient.create();
+        ReadSession.Builder sessionBuilder =
+                ReadSession.newBuilder().setTable(tableUri).setDataFormat(DataFormat.AVRO);
+        // .setReadOptions(parseQuery(query));
+
+        // TODO figure out how to configure snapshot time
+
+        // TODO dynamically infer stream count from some system attribute: CPUs?
+        CreateReadSessionRequest.Builder builder =
+                CreateReadSessionRequest.newBuilder()
+                        .setParent(projectUri)
+                        .setReadSession(sessionBuilder)
+                        .setMaxStreamCount(1);
+
+        ReadSession session = client.createReadSession(builder.build());
+
+        this.reader =
+                new BigqueryAvroReader(
+                        new Schema.Parser().parse(session.getAvroSchema().getSchema()));
+
+        Preconditions.checkState(session.getStreamsCount() > 0);
+        String streamName = session.getStreams(0).getName();
+
+        ReadRowsRequest readRowsRequest =
+                ReadRowsRequest.newBuilder().setReadStream(streamName).build();
+
+        this.stream = client.readRowsCallable().call(readRowsRequest);
+        this.streamIterator = stream.iterator();
     }
 
     @Override
     public SimpleFeatureType getFeatureType() {
-        return state.getFeatureType();
+        return featureType;
     }
 
     @Override
     public SimpleFeature next()
             throws IOException, IllegalArgumentException, NoSuchElementException {
 
-        return readFeature(cursor.next());
-    }
-
-    public SimpleFeature readFeature(FieldValueList row) throws IOException {
-        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(state.getFeatureType());
-
-        for (Field field : fields) {
-            String column = field.getName();
-            if (column == "geom") continue;
-
-            builder.set(column, row.get(column).getValue());
+        if (!reader.hasNext()) {
+            reader.decodeRows(streamIterator.next().getAvroRows());
         }
 
-        String geomWkt = row.get(BigqueryDataStore.GEOM_COLUMN).getStringValue();
+        return parseFeature(reader.next(), ++rowIndex, featureType, reader.getSchemaKeys());
+    }
+
+    @Override
+    public boolean hasNext() throws IOException {
+        return reader.hasNext() || streamIterator.hasNext();
+    }
+
+    private static TableReadOptions parseQuery(Query q) {
+
+        return null;
+    }
+
+    private static SimpleFeature parseFeature(
+            GenericRecord row, int rowIndex, SimpleFeatureType featureType, List<String> keys)
+            throws IOException {
+
+        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(featureType);
+
+        for (String column : keys) {
+            if (column == "geom") continue;
+
+            builder.set(column, row.get(column));
+        }
+
+        String geomWkt = row.get("geom").toString();
 
         try {
             Geometry geom = new WKTReader().read(geomWkt);
@@ -75,14 +134,51 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
         } catch (ParseException e) {
             throw new IOException(e);
         }
-        return builder.buildFeature(UUID.randomUUID().toString());
+        return builder.buildFeature(Integer.toString(rowIndex));
     }
 
     @Override
-    public boolean hasNext() throws IOException {
-        return cursor.hasNext();
+    public void close() throws IOException {
+        stream.cancel();
     }
 
-    @Override
-    public void close() throws IOException {}
+    private class BigqueryAvroReader {
+
+        private final DatumReader<GenericRecord> datumReader;
+        private BinaryDecoder decoder = null;
+        private GenericRecord row = null;
+        private Schema avroSchema;
+        private List<String> schemaKeys;
+
+        public BigqueryAvroReader(Schema avroSchema) {
+            Preconditions.checkNotNull(avroSchema);
+            this.avroSchema = avroSchema;
+            this.datumReader = new GenericDatumReader<>(avroSchema);
+        }
+
+        public List<String> getSchemaKeys() {
+            if (schemaKeys != null) return schemaKeys;
+
+            schemaKeys = new ArrayList<String>();
+            for (Schema.Field field : avroSchema.getFields()) {
+                schemaKeys.add(field.name());
+            }
+            return schemaKeys;
+        }
+
+        public void decodeRows(AvroRows avroRows) {
+            decoder =
+                    DecoderFactory.get()
+                            .binaryDecoder(
+                                    avroRows.getSerializedBinaryRows().toByteArray(), decoder);
+        }
+
+        public GenericRecord next() throws IOException {
+            return datumReader.read(row, decoder);
+        }
+
+        public boolean hasNext() throws IOException {
+            return decoder != null && !decoder.isEnd();
+        }
+    }
 }

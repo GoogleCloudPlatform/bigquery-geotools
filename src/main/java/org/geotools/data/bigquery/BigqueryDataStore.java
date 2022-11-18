@@ -20,11 +20,7 @@ import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.feature.NameImpl;
 import org.opengis.feature.type.Name;
 
-/**
- * Geotools datastore for BigQuery
- *
- * @author traviswebb
- */
+/** Geotools datastore for BigQuery */
 public class BigqueryDataStore extends ContentDataStore {
 
     private BigQuery bq;
@@ -41,7 +37,7 @@ public class BigqueryDataStore extends ContentDataStore {
      * @param projectId
      * @param datasetName
      */
-    public BigqueryDataStore(String projectId, String datasetName) {
+    public BigqueryDataStore(String projectId, String datasetName) throws IOException {
         this.projectId = projectId;
         this.datasetName = datasetName;
 
@@ -71,7 +67,6 @@ public class BigqueryDataStore extends ContentDataStore {
     }
 
     public static String getTableName(String tableName) {
-        // System.out.println(table.getGeneratedId());
         String[] parts = tableName.split("\\.");
         return parts[parts.length - 1];
     }
@@ -89,11 +84,17 @@ public class BigqueryDataStore extends ContentDataStore {
     }
 
     @Override
-    /** Get BigqueryFeatureSource */
+    /** Return a new BigqueryFeatureSource */
     protected ContentFeatureSource createFeatureSource(ContentEntry entry) throws IOException {
-        TableId tableId = TableId.of(projectId, datasetName, entry.getTypeName());
-        Table table = bq.getTable(tableId);
-        return new BigqueryFeatureSource(entry, null, table);
+        String projectUri = String.format("projects/%s", projectId);
+        String tableUri =
+                String.format(
+                        "projects/%s/datasets/%s/tables/%s",
+                        projectId, datasetName, entry.getTypeName());
+
+        Table tableRef = bq.getTable(TableId.of(projectId, datasetName, entry.getTypeName()));
+
+        return new BigqueryFeatureSource(entry, tableRef, projectUri, tableUri);
     }
 
     BigQuery read() throws IOException {

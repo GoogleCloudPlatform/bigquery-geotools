@@ -23,7 +23,7 @@ public class BigqueryDataStoreTest {
     @Test
     public void testGetTableName() {
         String tableName = BigqueryDataStore.getTableName("bigquery-geotools:test.counties");
-        assertEquals(tableName, "counties");
+        assertEquals("counties", tableName);
     }
 
     @Test
@@ -89,9 +89,6 @@ public class BigqueryDataStoreTest {
             assertEquals("Polygon", geom.getGeometryType());
             assertTrue(1 < geom.getLength());
             assertEquals(4326, geom.getSRID());
-            // System.out.println(i + " " + geom);
-
-            // assertTrue()
         }
     }
 }

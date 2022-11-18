@@ -1,6 +1,5 @@
 package org.geotools.data.bigquery;
 
-import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.FieldValueList;
@@ -32,16 +31,21 @@ import org.opengis.feature.simple.SimpleFeatureType;
  */
 public class BigqueryFeatureSource extends ContentFeatureSource {
 
-    private Table table;
+    private final String projectUri;
+    private final String tableUri;
     private final String sqlTable;
+    private final Table tableRef;
 
     protected final String GEOM_COLUMN = "geom";
 
-    public BigqueryFeatureSource(ContentEntry entry, Query query, Table table) {
-        super(entry, query);
-        this.table = table;
-        this.sqlTable = table.getGeneratedId().replace(":", ".");
-        // System.out.println("BigqueryFeatureSource()");
+    public BigqueryFeatureSource(
+            ContentEntry entry, Table tableRef, String projectUri, String tableUri)
+            throws IOException {
+        super(entry, null);
+        this.tableUri = tableUri;
+        this.projectUri = projectUri;
+        this.tableRef = tableRef;
+        this.sqlTable = tableRef.getGeneratedId().replace(":", ".");
     }
 
     @Override
@@ -51,12 +55,12 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     @Override
     protected ReferencedEnvelope getBoundsInternal(Query query) throws IOException {
-        BigQuery bq = table.getBigQuery();
+        // BigQuery bq = table.getBigQuery();
 
         String sql = "SELECT ST_EXTENT(geom) as extent FROM `" + sqlTable + "`";
         QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(sql).build();
         try {
-            TableResult results = bq.query(queryConfig);
+            TableResult results = tableRef.getBigQuery().query(queryConfig);
             FieldValueList row = results.getValues().iterator().next();
             FieldValueList extent = row.get("extent").getRecordValue();
 
@@ -77,13 +81,13 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     @Override
     protected int getCountInternal(Query query) throws IOException {
-        return table.getNumRows().intValue();
+        return tableRef.getNumRows().intValue();
     }
 
     @Override
     protected FeatureReader<SimpleFeatureType, SimpleFeature> getReaderInternal(Query query)
             throws IOException {
-        return new BigqueryFeatureReader(getState(), table, query);
+        return new BigqueryFeatureReader(getState(), projectUri, tableUri, query);
     }
 
     @Override
@@ -92,7 +96,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         builder.setName(entry.getTypeName());
         builder.setCRS(DefaultGeographicCRS.WGS84);
 
-        Schema schema = table.getDefinition().getSchema();
+        Schema schema = tableRef.getDefinition().getSchema();
         FieldList fields = schema.getFields();
         for (Field field : fields) {
             StandardSQLTypeName fieldType = field.getType().getStandardType();
