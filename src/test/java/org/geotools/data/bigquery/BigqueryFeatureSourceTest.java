@@ -21,6 +21,8 @@ public class BigqueryFeatureSourceTest {
         Map<String, String> params = new HashMap<>();
         params.put("projectId", "bigquery-geotools");
         params.put("datasetName", "test");
+        params.put("geometryColumn", "geom");
+
         DataStore store = DataStoreFinder.getDataStore(params);
 
         SimpleFeatureSource fs = (SimpleFeatureSource) store.getFeatureSource("counties");

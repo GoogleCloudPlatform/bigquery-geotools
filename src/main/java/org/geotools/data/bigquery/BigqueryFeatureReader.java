@@ -1,8 +1,11 @@
 package org.geotools.data.bigquery;
 
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.rpc.ServerStream;
+import com.google.auth.Credentials;
 import com.google.cloud.bigquery.storage.v1.AvroRows;
 import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
+import com.google.cloud.bigquery.storage.v1.BigQueryReadSettings;
 import com.google.cloud.bigquery.storage.v1.CreateReadSessionRequest;
 import com.google.cloud.bigquery.storage.v1.DataFormat;
 import com.google.cloud.bigquery.storage.v1.ReadRowsRequest;
@@ -15,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.logging.Logger;
 import org.apache.avro.Schema;
 import org.apache.avro.generic.GenericDatumReader;
 import org.apache.avro.generic.GenericRecord;
@@ -25,6 +29,7 @@ import org.geotools.data.Query;
 import org.geotools.data.simple.SimpleFeatureReader;
 import org.geotools.data.store.ContentState;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
+import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Geometry;
 import org.locationtech.jts.io.ParseException;
 import org.locationtech.jts.io.WKTReader;
@@ -33,12 +38,16 @@ import org.opengis.feature.simple.SimpleFeatureType;
 
 public class BigqueryFeatureReader implements SimpleFeatureReader {
 
+    private static final Logger LOGGER = Logging.getLogger(BigqueryFeatureReader.class);
+
     private SimpleFeatureType featureType;
     protected ContentState state;
     private int rowIndex;
 
     private ServerStream<ReadRowsResponse> stream;
     private Iterator<ReadRowsResponse> streamIterator;
+    private final int srid;
+    private final String geomColumn;
 
     private final BigqueryAvroReader reader;
 
@@ -53,18 +62,27 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     public BigqueryFeatureReader(
             ContentState state, String projectUri, String tableUri, Query query)
             throws IOException {
+
         this.state = state;
-        this.rowIndex = -1;
         this.featureType = state.getFeatureType();
+        this.srid = ((BigqueryDataStore) state.getEntry().getDataStore()).SRID;
+        this.geomColumn = ((BigqueryDataStore) state.getEntry().getDataStore()).GEOM_COLUMN;
+        this.rowIndex = -1;
 
-        BigQueryReadClient client = BigQueryReadClient.create();
+        Credentials credentials = ((BigqueryDataStore) state.getEntry().getDataStore()).credentials;
+        BigQueryReadSettings.Builder settingsBuilder = BigQueryReadSettings.newBuilder();
+        if (credentials != null) {
+            settingsBuilder.setCredentialsProvider(FixedCredentialsProvider.create(credentials));
+        }
+
+        BigQueryReadClient client = BigQueryReadClient.create(settingsBuilder.build());
         ReadSession.Builder sessionBuilder =
-                ReadSession.newBuilder().setTable(tableUri).setDataFormat(DataFormat.AVRO);
-        // .setReadOptions(parseQuery(query));
+                ReadSession.newBuilder()
+                        .setTable(tableUri)
+                        .setDataFormat(DataFormat.AVRO)
+                        .setReadOptions(parseQuery(query));
 
-        // TODO figure out how to configure snapshot time
-
-        // TODO dynamically infer stream count from some system attribute: CPUs?
+        // TODO configure snapshot time
         CreateReadSessionRequest.Builder builder =
                 CreateReadSessionRequest.newBuilder()
                         .setParent(projectUri)
@@ -100,7 +118,8 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
             reader.decodeRows(streamIterator.next().getAvroRows());
         }
 
-        return parseFeature(reader.next(), ++rowIndex, featureType, reader.getSchemaKeys());
+        return parseFeature(
+                reader.next(), ++rowIndex, featureType, reader.getSchemaKeys(), srid, geomColumn);
     }
 
     @Override
@@ -108,29 +127,39 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
         return reader.hasNext() || streamIterator.hasNext();
     }
 
+    /**
+     * Return BQ TableReadOptions from the given Query.
+     *
+     * @param q
+     * @return
+     */
     private static TableReadOptions parseQuery(Query q) {
-
-        return null;
+        return TableReadOptions.newBuilder().build();
     }
 
     private static SimpleFeature parseFeature(
-            GenericRecord row, int rowIndex, SimpleFeatureType featureType, List<String> keys)
+            GenericRecord row,
+            int rowIndex,
+            SimpleFeatureType featureType,
+            List<String> keys,
+            int srid,
+            String geomColumn)
             throws IOException {
 
         SimpleFeatureBuilder builder = new SimpleFeatureBuilder(featureType);
 
         for (String column : keys) {
-            if (column == "geom") continue;
+            if (column == geomColumn) continue;
 
             builder.set(column, row.get(column));
         }
 
-        String geomWkt = row.get("geom").toString();
+        String geomWkt = row.get(geomColumn).toString();
 
         try {
             Geometry geom = new WKTReader().read(geomWkt);
-            geom.setSRID(BigqueryDataStore.SRID);
-            builder.set(BigqueryDataStore.GEOM_COLUMN, geom);
+            geom.setSRID(srid);
+            builder.set(geomColumn, geom);
         } catch (ParseException e) {
             throw new IOException(e);
         }

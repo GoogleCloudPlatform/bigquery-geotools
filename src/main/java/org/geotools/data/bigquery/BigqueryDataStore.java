@@ -1,6 +1,8 @@
 package org.geotools.data.bigquery;
 
 import com.google.api.gax.paging.Page;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.ServiceAccountCredentials;
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQuery.TableListOption;
 import com.google.cloud.bigquery.BigQueryException;
@@ -11,25 +13,34 @@ import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.Table;
 import com.google.cloud.bigquery.TableId;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Logger;
 import org.geotools.data.store.ContentDataStore;
 import org.geotools.data.store.ContentEntry;
 import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.feature.NameImpl;
+import org.geotools.util.logging.Logging;
 import org.opengis.feature.type.Name;
 
 /** Geotools datastore for BigQuery */
 public class BigqueryDataStore extends ContentDataStore {
 
-    private BigQuery bq;
+    private static final Logger LOGGER = Logging.getLogger(BigqueryDataStore.class);
 
-    private String projectId;
-    private String datasetName;
+    /** Parameterize this if/when BQ supports non-WGS84 SRIDs. Constant for now. */
+    protected final int SRID = 4326;
 
-    public static final String GEOM_COLUMN = "geom";
-    public static final int SRID = 4326;
+    protected final String GEOM_COLUMN;
+
+    protected final BigQuery bq;
+    protected final String projectId;
+    protected final String datasetName;
+    protected final File serviceAccountKeyFile;
+    protected GoogleCredentials credentials;
 
     /**
      * Construct a BigqueryDatastore for a given project and dataset.
@@ -37,13 +48,26 @@ public class BigqueryDataStore extends ContentDataStore {
      * @param projectId
      * @param datasetName
      */
-    public BigqueryDataStore(String projectId, String datasetName) throws IOException {
+    public BigqueryDataStore(
+            String projectId, String datasetName, String geomColumn, File serviceAccountKeyFile)
+            throws IOException {
+        this.GEOM_COLUMN = geomColumn;
         this.projectId = projectId;
         this.datasetName = datasetName;
+        this.serviceAccountKeyFile = serviceAccountKeyFile;
 
         this.setNamespaceURI(null);
 
-        this.bq = BigQueryOptions.newBuilder().setProjectId(this.projectId).build().getService();
+        BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
+        if (serviceAccountKeyFile != null) {
+            try (FileInputStream serviceAccountStream =
+                    new FileInputStream(serviceAccountKeyFile)) {
+                credentials = ServiceAccountCredentials.fromStream(serviceAccountStream);
+            }
+            builder.setCredentials(credentials);
+        }
+
+        this.bq = builder.setProjectId(projectId).build().getService();
     }
 
     @Override

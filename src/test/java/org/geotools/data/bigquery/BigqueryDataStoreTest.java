@@ -31,6 +31,7 @@ public class BigqueryDataStoreTest {
         Map<String, String> params = new HashMap<>();
         params.put("projectId", "bigquery-geotools");
         params.put("datasetName", "test");
+        params.put("geometryColumn", "geom");
         DataStore store = DataStoreFinder.getDataStore(params);
 
         String[] names = store.getTypeNames();
@@ -44,6 +45,8 @@ public class BigqueryDataStoreTest {
         Map<String, String> params = new HashMap<>();
         params.put("projectId", "bigquery-geotools");
         params.put("datasetName", "test");
+        params.put("geometryColumn", "geom");
+
         DataStore store = DataStoreFinder.getDataStore(params);
 
         SimpleFeatureType type = store.getSchema("counties");
@@ -57,6 +60,8 @@ public class BigqueryDataStoreTest {
         Map<String, String> params = new HashMap<>();
         params.put("projectId", "bigquery-geotools");
         params.put("datasetName", "test");
+        params.put("geometryColumn", "geom");
+
         DataStore store = DataStoreFinder.getDataStore(params);
 
         SimpleFeatureSource src = store.getFeatureSource("counties");
@@ -73,6 +78,8 @@ public class BigqueryDataStoreTest {
         Map<String, String> params = new HashMap<>();
         params.put("projectId", "bigquery-geotools");
         params.put("datasetName", "test");
+        params.put("geometryColumn", "geom");
+
         DataStore store = DataStoreFinder.getDataStore(params);
 
         SimpleFeatureReader reader =

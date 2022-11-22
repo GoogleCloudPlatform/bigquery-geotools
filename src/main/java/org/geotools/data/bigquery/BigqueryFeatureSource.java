@@ -1,5 +1,6 @@
 package org.geotools.data.bigquery;
 
+import com.google.cloud.bigquery.Clustering;
 import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.FieldValueList;
@@ -7,12 +8,18 @@ import com.google.cloud.bigquery.JobException;
 import com.google.cloud.bigquery.QueryJobConfiguration;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
+import com.google.cloud.bigquery.StandardTableDefinition;
 import com.google.cloud.bigquery.Table;
 import com.google.cloud.bigquery.TableResult;
+import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.Query;
 import org.geotools.data.store.ContentEntry;
@@ -20,6 +27,7 @@ import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.referencing.crs.DefaultGeographicCRS;
+import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
@@ -31,21 +39,67 @@ import org.opengis.feature.simple.SimpleFeatureType;
  */
 public class BigqueryFeatureSource extends ContentFeatureSource {
 
+    private static final Logger LOGGER = Logging.getLogger(BigqueryFeatureSource.class);
+
     private final String projectUri;
     private final String tableUri;
     private final String sqlTable;
     private final Table tableRef;
+    private boolean isClustered;
 
-    protected final String GEOM_COLUMN = "geom";
+    protected static final Map<StandardSQLTypeName, Class<?>> BQ_TYPE_MAP =
+            new ImmutableMap.Builder<StandardSQLTypeName, Class<?>>()
+                    .put(StandardSQLTypeName.GEOGRAPHY, Geometry.class)
+                    .put(StandardSQLTypeName.BIGNUMERIC, BigDecimal.class)
+                    .put(StandardSQLTypeName.BOOL, Boolean.class)
+                    .put(StandardSQLTypeName.INT64, BigInteger.class)
+                    .put(StandardSQLTypeName.FLOAT64, Float.class)
+                    .put(StandardSQLTypeName.NUMERIC, BigDecimal.class)
+                    .put(StandardSQLTypeName.STRING, String.class)
+                    .put(StandardSQLTypeName.DATE, Date.class)
+                    .put(StandardSQLTypeName.DATETIME, Date.class)
+                    .put(StandardSQLTypeName.TIME, Date.class)
+                    .put(StandardSQLTypeName.TIMESTAMP, Date.class)
+                    .put(StandardSQLTypeName.BYTES, String.class)
+                    .put(StandardSQLTypeName.ARRAY, String.class)
+                    .put(StandardSQLTypeName.INTERVAL, String.class)
+                    .put(StandardSQLTypeName.STRUCT, String.class)
+                    .put(StandardSQLTypeName.JSON, String.class)
+                    .build();
 
     public BigqueryFeatureSource(
             ContentEntry entry, Table tableRef, String projectUri, String tableUri)
             throws IOException {
+
         super(entry, null);
         this.tableUri = tableUri;
         this.projectUri = projectUri;
         this.tableRef = tableRef;
         this.sqlTable = tableRef.getGeneratedId().replace(":", ".");
+
+        setIsClustered();
+
+        if (!isClustered) {
+            LOGGER.log(
+                    Level.WARNING,
+                    String.format(
+                            "%s is not clustered on %s. This will affect performance.",
+                            tableUri, getDataStore().GEOM_COLUMN));
+        }
+    }
+
+    private void setIsClustered() {
+        Clustering clustering =
+                ((StandardTableDefinition) tableRef.getDefinition()).getClustering();
+
+        if (clustering == null) {
+            isClustered = false;
+            return;
+        }
+        List<String> clusteringFields = clustering.getFields();
+        isClustered =
+                !clusteringFields.isEmpty()
+                        && getDataStore().GEOM_COLUMN.equals(clusteringFields.get(0));
     }
 
     @Override
@@ -55,10 +109,10 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     @Override
     protected ReferencedEnvelope getBoundsInternal(Query query) throws IOException {
-        // BigQuery bq = table.getBigQuery();
-
-        String sql = "SELECT ST_EXTENT(geom) as extent FROM `" + sqlTable + "`";
+        String geomColumn = getDataStore().GEOM_COLUMN;
+        String sql = "SELECT ST_EXTENT(" + geomColumn + ") as extent FROM `" + sqlTable + "`";
         QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(sql).build();
+
         try {
             TableResult results = tableRef.getBigQuery().query(queryConfig);
             FieldValueList row = results.getValues().iterator().next();
@@ -99,33 +153,12 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         Schema schema = tableRef.getDefinition().getSchema();
         FieldList fields = schema.getFields();
         for (Field field : fields) {
-            StandardSQLTypeName fieldType = field.getType().getStandardType();
             String fieldName = field.getName();
+            Class<?> fieldType = BQ_TYPE_MAP.get(field.getType().getStandardType());
 
-            if (fieldType == StandardSQLTypeName.GEOGRAPHY) {
-                builder.add(fieldName, Geometry.class);
-            } else if (fieldType == StandardSQLTypeName.BIGNUMERIC) {
-                builder.add(fieldName, BigDecimal.class);
-            } else if (fieldType == StandardSQLTypeName.BOOL) {
-                builder.add(fieldName, Boolean.class);
-            } else if (fieldType == StandardSQLTypeName.INT64) {
-                builder.add(fieldName, BigInteger.class);
-            } else if (fieldType == StandardSQLTypeName.FLOAT64) {
-                builder.add(fieldName, Float.class);
-            } else if (fieldType == StandardSQLTypeName.NUMERIC) {
-                builder.add(fieldName, BigDecimal.class);
-            } else if (fieldType == StandardSQLTypeName.STRING) {
-                builder.add(fieldName, String.class);
-            } else if (fieldType == StandardSQLTypeName.DATE
-                    || fieldType == StandardSQLTypeName.DATETIME) {
-                builder.add(fieldName, Date.class);
-            } else if (fieldType == StandardSQLTypeName.TIME
-                    || fieldType == StandardSQLTypeName.TIMESTAMP) {
-                builder.add(fieldName, Date.class);
-            }
-            // skipping BYTES, ARRAY, INTERVAL, JSON, STRUCT
+            builder.add(fieldName, fieldType);
         }
-        builder.setDefaultGeometry(BigqueryDataStore.GEOM_COLUMN);
+        builder.setDefaultGeometry(getDataStore().GEOM_COLUMN);
         return builder.buildFeatureType();
     }
 }
