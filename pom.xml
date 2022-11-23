@@ -52,6 +52,7 @@
   </dependencyManagement>
 
   <dependencies>
+
     <dependency>
       <groupId>com.google.cloud</groupId>
       <artifactId>google-cloud-bigquery</artifactId>
@@ -115,7 +116,7 @@
     <plugins>
          <plugin>
         <artifactId>maven-assembly-plugin</artifactId>
-        <version>3.4.2</version>
+        <version>3.4.2</version><!--$NO-MVN-MAN-VER$-->
         <configuration>
           <descriptorRefs>
             <descriptorRef>jar-with-dependencies</descriptorRef>

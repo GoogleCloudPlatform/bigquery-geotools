@@ -13,6 +13,8 @@ import com.google.cloud.bigquery.storage.v1.ReadRowsResponse;
 import com.google.cloud.bigquery.storage.v1.ReadSession;
 import com.google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions;
 import com.google.common.base.Preconditions;
+import io.grpc.LoadBalancerRegistry;
+import io.grpc.internal.PickFirstLoadBalancerProvider;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -48,7 +50,9 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     private Iterator<ReadRowsResponse> streamIterator;
     private final int srid;
     private final String geomColumn;
+    private final Query query;
 
+    private final BigQueryReadClient client;
     private final BigqueryAvroReader reader;
 
     /**
@@ -63,11 +67,22 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
             ContentState state, String projectUri, String tableUri, Query query)
             throws IOException {
 
+        /*
+        System.out.println(projectUri);
+        System.out.println(tableUri);
+        System.out.println(query);
+        System.out.println(query.getProperties());
+        System.out.println(query.getPropertyNames());
+        */
+
+        this.query = query;
         this.state = state;
         this.featureType = state.getFeatureType();
         this.srid = ((BigqueryDataStore) state.getEntry().getDataStore()).SRID;
         this.geomColumn = ((BigqueryDataStore) state.getEntry().getDataStore()).GEOM_COLUMN;
         this.rowIndex = -1;
+
+        LoadBalancerRegistry.getDefaultRegistry().register(new PickFirstLoadBalancerProvider());
 
         Credentials credentials = ((BigqueryDataStore) state.getEntry().getDataStore()).credentials;
         BigQueryReadSettings.Builder settingsBuilder = BigQueryReadSettings.newBuilder();
@@ -75,12 +90,12 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
             settingsBuilder.setCredentialsProvider(FixedCredentialsProvider.create(credentials));
         }
 
-        BigQueryReadClient client = BigQueryReadClient.create(settingsBuilder.build());
+        client = BigQueryReadClient.create(settingsBuilder.build());
         ReadSession.Builder sessionBuilder =
                 ReadSession.newBuilder()
                         .setTable(tableUri)
                         .setDataFormat(DataFormat.AVRO)
-                        .setReadOptions(parseQuery(query));
+                        .setReadOptions(parseQuery());
 
         // TODO configure snapshot time
         CreateReadSessionRequest.Builder builder =
@@ -127,14 +142,19 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
         return reader.hasNext() || streamIterator.hasNext();
     }
 
+    @Override
+    public void close() throws IOException {
+        client.shutdownNow();
+    }
+
     /**
      * Return BQ TableReadOptions from the given Query.
      *
-     * @param q
      * @return
      */
-    private static TableReadOptions parseQuery(Query q) {
-        return TableReadOptions.newBuilder().build();
+    private TableReadOptions parseQuery() {
+        BigqueryQueryParser parser = new BigqueryQueryParser(query, getFeatureType());
+        return parser.parse().toReadOptions();
     }
 
     private static SimpleFeature parseFeature(
@@ -164,11 +184,6 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
             throw new IOException(e);
         }
         return builder.buildFeature(Integer.toString(rowIndex));
-    }
-
-    @Override
-    public void close() throws IOException {
-        stream.cancel();
     }
 
     private class BigqueryAvroReader {
