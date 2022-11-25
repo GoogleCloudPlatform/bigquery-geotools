@@ -107,14 +107,6 @@ public class BigqueryQueryParser implements FilterVisitor {
         else return attrs[0];
     }
 
-    private String[] extractMultiAttribute(Filter filter) {
-        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
-        filter.accept(extractor, null);
-        String[] attrs = extractor.getAttributeNames();
-
-        return attrs;
-    }
-
     private String getGeogFromGeojsonSQL(Geometry geom) {
         String geomJson = new GeometryJSON().toString(geom);
         return String.format("ST_GEOGFROMGEOJSON('%s', make_valid => true)", geomJson);
