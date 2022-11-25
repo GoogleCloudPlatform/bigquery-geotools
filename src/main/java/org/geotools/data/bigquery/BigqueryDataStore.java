@@ -1,5 +1,6 @@
 package org.geotools.data.bigquery;
 
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.paging.Page;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
@@ -12,7 +13,10 @@ import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.Table;
-import com.google.cloud.bigquery.TableId;
+import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
+import com.google.cloud.bigquery.storage.v1.BigQueryReadSettings;
+import io.grpc.LoadBalancerRegistry;
+import io.grpc.internal.PickFirstLoadBalancerProvider;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -37,6 +41,8 @@ public class BigqueryDataStore extends ContentDataStore {
     protected final String GEOM_COLUMN;
 
     protected final BigQuery bq;
+    protected final BigQueryReadClient client;
+
     protected final String projectId;
     protected final String datasetName;
     protected final File serviceAccountKeyFile;
@@ -59,15 +65,21 @@ public class BigqueryDataStore extends ContentDataStore {
         this.setNamespaceURI(null);
 
         BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
+        BigQueryReadSettings.Builder settingsBuilder = BigQueryReadSettings.newBuilder();
+
         if (serviceAccountKeyFile != null) {
             try (FileInputStream serviceAccountStream =
                     new FileInputStream(serviceAccountKeyFile)) {
                 credentials = ServiceAccountCredentials.fromStream(serviceAccountStream);
             }
             builder.setCredentials(credentials);
+            settingsBuilder.setCredentialsProvider(FixedCredentialsProvider.create(credentials));
         }
 
         this.bq = builder.setProjectId(projectId).build().getService();
+        this.client = BigQueryReadClient.create(settingsBuilder.build());
+
+        LoadBalancerRegistry.getDefaultRegistry().register(new PickFirstLoadBalancerProvider());
     }
 
     @Override
@@ -108,17 +120,8 @@ public class BigqueryDataStore extends ContentDataStore {
     }
 
     @Override
-    /** Return a new BigqueryFeatureSource */
     protected ContentFeatureSource createFeatureSource(ContentEntry entry) throws IOException {
-        String projectUri = String.format("projects/%s", projectId);
-        String tableUri =
-                String.format(
-                        "projects/%s/datasets/%s/tables/%s",
-                        projectId, datasetName, entry.getTypeName());
-
-        Table tableRef = bq.getTable(TableId.of(projectId, datasetName, entry.getTypeName()));
-
-        return new BigqueryFeatureSource(entry, tableRef, projectUri, tableUri);
+        return new BigqueryFeatureSource(entry);
     }
 
     BigQuery read() throws IOException {

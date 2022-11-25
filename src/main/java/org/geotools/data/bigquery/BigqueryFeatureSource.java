@@ -10,6 +10,7 @@ import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.StandardTableDefinition;
 import com.google.cloud.bigquery.Table;
+import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.TableResult;
 import com.google.common.collect.ImmutableMap;
 import java.io.IOException;
@@ -18,7 +19,6 @@ import java.math.BigInteger;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.geotools.data.FeatureReader;
 import org.geotools.data.Query;
@@ -41,12 +41,6 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     private static final Logger LOGGER = Logging.getLogger(BigqueryFeatureSource.class);
 
-    private final String projectUri;
-    private final String tableUri;
-    private final String sqlTable;
-    private final Table tableRef;
-    private boolean isClustered;
-
     protected static final Map<StandardSQLTypeName, Class<?>> BQ_TYPE_MAP =
             new ImmutableMap.Builder<StandardSQLTypeName, Class<?>>()
                     .put(StandardSQLTypeName.GEOGRAPHY, Geometry.class)
@@ -67,39 +61,24 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                     .put(StandardSQLTypeName.JSON, String.class)
                     .build();
 
-    public BigqueryFeatureSource(
-            ContentEntry entry, Table tableRef, String projectUri, String tableUri)
-            throws IOException {
-
+    public BigqueryFeatureSource(ContentEntry entry) throws IOException {
         super(entry, null);
-        this.tableUri = tableUri;
-        this.projectUri = projectUri;
-        this.tableRef = tableRef;
-        this.sqlTable = tableRef.getGeneratedId().replace(":", ".");
-
-        setIsClustered();
-
-        if (!isClustered) {
-            LOGGER.log(
-                    Level.WARNING,
-                    String.format(
-                            "%s is not clustered on %s. This will affect performance.",
-                            tableUri, getDataStore().GEOM_COLUMN));
-        }
     }
 
-    private void setIsClustered() {
+    private boolean getIsClustered() {
+        BigqueryDataStore store = getDataStore();
+        Table tableRef =
+                store.bq.getTable(
+                        TableId.of(store.projectId, store.datasetName, entry.getTypeName()));
         Clustering clustering =
                 ((StandardTableDefinition) tableRef.getDefinition()).getClustering();
 
         if (clustering == null) {
-            isClustered = false;
-            return;
+            return false;
         }
         List<String> clusteringFields = clustering.getFields();
-        isClustered =
-                !clusteringFields.isEmpty()
-                        && getDataStore().GEOM_COLUMN.equals(clusteringFields.get(0));
+        return !clusteringFields.isEmpty()
+                && getDataStore().GEOM_COLUMN.equals(clusteringFields.get(0));
     }
 
     @Override
@@ -109,6 +88,13 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     @Override
     protected ReferencedEnvelope getBoundsInternal(Query query) throws IOException {
+        BigqueryDataStore store = getDataStore();
+        Table tableRef =
+                store.bq.getTable(
+                        TableId.of(store.projectId, store.datasetName, entry.getTypeName()));
+
+        String sqlTable = tableRef.getGeneratedId().replace(":", ".");
+
         String geomColumn = getDataStore().GEOM_COLUMN;
         String sql = "SELECT ST_EXTENT(" + geomColumn + ") as extent FROM `" + sqlTable + "`";
         QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(sql).build();
@@ -135,17 +121,26 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
     @Override
     protected int getCountInternal(Query query) throws IOException {
+        BigqueryDataStore store = getDataStore();
+        Table tableRef =
+                store.bq.getTable(
+                        TableId.of(store.projectId, store.datasetName, entry.getTypeName()));
         return tableRef.getNumRows().intValue();
     }
 
     @Override
     protected FeatureReader<SimpleFeatureType, SimpleFeature> getReaderInternal(Query query)
             throws IOException {
-        return new BigqueryFeatureReader(getState(), projectUri, tableUri, query);
+        return new BigqueryFeatureReader(getState(), query);
     }
 
     @Override
     protected SimpleFeatureType buildFeatureType() throws IOException {
+        BigqueryDataStore store = getDataStore();
+        Table tableRef =
+                store.bq.getTable(
+                        TableId.of(store.projectId, store.datasetName, entry.getTypeName()));
+
         SimpleFeatureTypeBuilder builder = new SimpleFeatureTypeBuilder();
         builder.setName(entry.getTypeName());
         builder.setCRS(DefaultGeographicCRS.WGS84);

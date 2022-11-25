@@ -1,20 +1,13 @@
 package org.geotools.data.bigquery;
 
-import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.rpc.ServerStream;
-import com.google.auth.Credentials;
 import com.google.cloud.bigquery.storage.v1.AvroRows;
-import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
-import com.google.cloud.bigquery.storage.v1.BigQueryReadSettings;
 import com.google.cloud.bigquery.storage.v1.CreateReadSessionRequest;
 import com.google.cloud.bigquery.storage.v1.DataFormat;
 import com.google.cloud.bigquery.storage.v1.ReadRowsRequest;
 import com.google.cloud.bigquery.storage.v1.ReadRowsResponse;
 import com.google.cloud.bigquery.storage.v1.ReadSession;
 import com.google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions;
-import com.google.common.base.Preconditions;
-import io.grpc.LoadBalancerRegistry;
-import io.grpc.internal.PickFirstLoadBalancerProvider;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -45,6 +38,7 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     private SimpleFeatureType featureType;
     protected ContentState state;
     private int rowIndex;
+    private int rowLimit;
 
     private ServerStream<ReadRowsResponse> stream;
     private Iterator<ReadRowsResponse> streamIterator;
@@ -52,7 +46,6 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     private final String geomColumn;
     private final Query query;
 
-    private final BigQueryReadClient client;
     private final BigqueryAvroReader reader;
 
     /**
@@ -63,34 +56,23 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
      * @param query
      * @throws IOException
      */
-    public BigqueryFeatureReader(
-            ContentState state, String projectUri, String tableUri, Query query)
-            throws IOException {
+    public BigqueryFeatureReader(ContentState state, Query query) throws IOException {
 
-        /*
-        System.out.println(projectUri);
-        System.out.println(tableUri);
-        System.out.println(query);
-        System.out.println(query.getProperties());
-        System.out.println(query.getPropertyNames());
-        */
+        BigqueryDataStore store = (BigqueryDataStore) state.getEntry().getDataStore();
+        String projectUri = String.format("projects/%s", store.projectId);
+        String tableUri =
+                String.format(
+                        "projects/%s/datasets/%s/tables/%s",
+                        store.projectId, store.datasetName, state.getEntry().getTypeName());
 
         this.query = query;
         this.state = state;
         this.featureType = state.getFeatureType();
-        this.srid = ((BigqueryDataStore) state.getEntry().getDataStore()).SRID;
-        this.geomColumn = ((BigqueryDataStore) state.getEntry().getDataStore()).GEOM_COLUMN;
+        this.srid = store.SRID;
+        this.geomColumn = store.GEOM_COLUMN;
         this.rowIndex = -1;
+        this.rowLimit = query.getMaxFeatures();
 
-        LoadBalancerRegistry.getDefaultRegistry().register(new PickFirstLoadBalancerProvider());
-
-        Credentials credentials = ((BigqueryDataStore) state.getEntry().getDataStore()).credentials;
-        BigQueryReadSettings.Builder settingsBuilder = BigQueryReadSettings.newBuilder();
-        if (credentials != null) {
-            settingsBuilder.setCredentialsProvider(FixedCredentialsProvider.create(credentials));
-        }
-
-        client = BigQueryReadClient.create(settingsBuilder.build());
         ReadSession.Builder sessionBuilder =
                 ReadSession.newBuilder()
                         .setTable(tableUri)
@@ -104,19 +86,19 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
                         .setReadSession(sessionBuilder)
                         .setMaxStreamCount(1);
 
-        ReadSession session = client.createReadSession(builder.build());
+        ReadSession session = store.client.createReadSession(builder.build());
 
         this.reader =
                 new BigqueryAvroReader(
                         new Schema.Parser().parse(session.getAvroSchema().getSchema()));
 
-        Preconditions.checkState(session.getStreamsCount() > 0);
+        // Preconditions.checkState(session.getStreamsCount() > 0);
         String streamName = session.getStreams(0).getName();
 
         ReadRowsRequest readRowsRequest =
                 ReadRowsRequest.newBuilder().setReadStream(streamName).build();
 
-        this.stream = client.readRowsCallable().call(readRowsRequest);
+        this.stream = store.client.readRowsCallable().call(readRowsRequest);
         this.streamIterator = stream.iterator();
     }
 
@@ -132,20 +114,17 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
         if (!reader.hasNext()) {
             reader.decodeRows(streamIterator.next().getAvroRows());
         }
-
         return parseFeature(
                 reader.next(), ++rowIndex, featureType, reader.getSchemaKeys(), srid, geomColumn);
     }
 
     @Override
     public boolean hasNext() throws IOException {
-        return reader.hasNext() || streamIterator.hasNext();
+        return (reader.hasNext() || streamIterator.hasNext()) && rowIndex <= rowLimit;
     }
 
     @Override
-    public void close() throws IOException {
-        client.shutdownNow();
-    }
+    public void close() throws IOException {}
 
     /**
      * Return BQ TableReadOptions from the given Query.
@@ -154,7 +133,13 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
      */
     private TableReadOptions parseQuery() {
         BigqueryQueryParser parser = new BigqueryQueryParser(query, getFeatureType());
-        return parser.parse().toReadOptions();
+        TableReadOptions options = parser.parse().toReadOptions();
+
+        System.out.println(options.getRowRestriction());
+
+        // LOGGER.log(Level.INFO, options.getRowRestriction());
+
+        return options;
     }
 
     private static SimpleFeature parseFeature(
@@ -195,7 +180,7 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
         private List<String> schemaKeys;
 
         public BigqueryAvroReader(Schema avroSchema) {
-            Preconditions.checkNotNull(avroSchema);
+            // Preconditions.checkNotNull(avroSchema);
             this.avroSchema = avroSchema;
             this.datumReader = new GenericDatumReader<>(avroSchema);
         }

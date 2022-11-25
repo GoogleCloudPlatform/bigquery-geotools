@@ -8,6 +8,7 @@ import java.util.HashMap;
 import java.util.Map;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFinder;
+import org.geotools.data.Query;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.junit.Test;
@@ -25,11 +26,13 @@ public class BigqueryFeatureSourceTest {
 
         DataStore store = DataStoreFinder.getDataStore(params);
 
+        Query q = new Query("counties");
+        q.setMaxFeatures(100);
+
         SimpleFeatureSource fs = (SimpleFeatureSource) store.getFeatureSource("counties");
+        SimpleFeatureCollection col = fs.getFeatures(q);
 
-        SimpleFeatureCollection col = fs.getFeatures();
-
-        assertTrue(col.size() > 3000);
+        assertEquals(100, col.size());
 
         SimpleFeature feature = col.features().next();
         Geometry geom = (Geometry) feature.getDefaultGeometry();
@@ -39,6 +42,5 @@ public class BigqueryFeatureSourceTest {
         assertEquals("Polygon", geom.getGeometryType());
         assertEquals(4326, geom.getSRID());
         assertTrue(geom.isValid());
-        // System.out.println(geom.toText());
     }
 }

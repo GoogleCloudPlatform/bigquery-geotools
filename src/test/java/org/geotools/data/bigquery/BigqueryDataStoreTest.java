@@ -8,9 +8,9 @@ import java.util.HashMap;
 import java.util.Map;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFinder;
+import org.geotools.data.FeatureReader;
 import org.geotools.data.Query;
 import org.geotools.data.Transaction;
-import org.geotools.data.simple.SimpleFeatureReader;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.junit.Test;
@@ -81,15 +81,15 @@ public class BigqueryDataStoreTest {
         params.put("geometryColumn", "geom");
 
         DataStore store = DataStoreFinder.getDataStore(params);
+        Query q = new Query("counties");
+        q.setMaxFeatures(10);
 
-        SimpleFeatureReader reader =
-                (SimpleFeatureReader)
-                        store.getFeatureReader(new Query("counties"), Transaction.AUTO_COMMIT);
+        FeatureReader reader = store.getFeatureReader(q, Transaction.AUTO_COMMIT);
 
         for (int i = 0; i < 10; i++) {
             assertTrue(reader.hasNext());
 
-            SimpleFeature f = reader.next();
+            SimpleFeature f = (SimpleFeature) reader.next();
             assertTrue(f.getAttribute("county_fips_code") != null);
 
             Geometry geom = (Geometry) f.getAttribute("geom");

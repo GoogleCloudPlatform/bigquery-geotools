@@ -5,11 +5,16 @@ import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Deque;
 import java.util.List;
+import java.util.logging.Logger;
 import org.geotools.data.Query;
 import org.geotools.filter.FilterAttributeExtractor;
+import org.geotools.geojson.geom.GeometryJSON;
+import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Envelope;
+import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeatureType;
 import org.opengis.filter.And;
+import org.opengis.filter.BinaryComparisonOperator;
 import org.opengis.filter.ExcludeFilter;
 import org.opengis.filter.Filter;
 import org.opengis.filter.FilterVisitor;
@@ -27,17 +32,9 @@ import org.opengis.filter.PropertyIsLike;
 import org.opengis.filter.PropertyIsNil;
 import org.opengis.filter.PropertyIsNotEqualTo;
 import org.opengis.filter.PropertyIsNull;
-import org.opengis.filter.expression.Add;
-import org.opengis.filter.expression.Divide;
-import org.opengis.filter.expression.ExpressionVisitor;
-import org.opengis.filter.expression.Function;
-import org.opengis.filter.expression.Literal;
-import org.opengis.filter.expression.Multiply;
-import org.opengis.filter.expression.NilExpression;
-import org.opengis.filter.expression.PropertyName;
-import org.opengis.filter.expression.Subtract;
 import org.opengis.filter.spatial.BBOX;
 import org.opengis.filter.spatial.Beyond;
+import org.opengis.filter.spatial.BinarySpatialOperator;
 import org.opengis.filter.spatial.Contains;
 import org.opengis.filter.spatial.Crosses;
 import org.opengis.filter.spatial.DWithin;
@@ -68,7 +65,9 @@ import org.opengis.filter.temporal.TOverlaps;
  *
  * @author traviswebb
  */
-public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
+public class BigqueryQueryParser implements FilterVisitor {
+
+    private static final Logger LOGGER = Logging.getLogger(BigqueryQueryParser.class);
 
     private final Query query;
 
@@ -99,17 +98,92 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
         return builder.build();
     }
 
-    private String extractSingleGeomAttribute(Filter filter) {
+    private String extractSingleAttribute(Filter filter) {
         FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
         filter.accept(extractor, null);
-        return extractor.getAttributeNames()[0];
+        String[] attrs = extractor.getAttributeNames();
+
+        if (attrs.length == 0) return null;
+        else return attrs[0];
     }
+
+    private String[] extractMultiAttribute(Filter filter) {
+        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
+        filter.accept(extractor, null);
+        String[] attrs = extractor.getAttributeNames();
+
+        return attrs;
+    }
+
+    private String getGeogFromGeojsonSQL(Geometry geom) {
+        String geomJson = new GeometryJSON().toString(geom);
+        return String.format("ST_GEOGFROMGEOJSON('%s', make_valid => true)", geomJson);
+    }
+
+    private String resolveValue(Object value) {
+        if (value instanceof Geometry) {
+            return getGeogFromGeojsonSQL((Geometry) value);
+        } else if (value instanceof String) {
+            return "'" + value + "'";
+        } else if (value instanceof Integer) {
+            return Integer.toString((Integer) value);
+        } else if (value instanceof Float) {
+            return Float.toString((Float) value);
+        } else if (value instanceof Double) {
+            return Double.toString((Double) value);
+        } else {
+            return (String) value;
+        }
+    }
+
+    /**
+     * Figures out filter arg types and positions, and return a PAIR of Strings that are formatted
+     * and ready to be inserted into a clause template.
+     *
+     * @param filter
+     * @param e1
+     * @param e2
+     * @return
+     */
+    private String[] getArgsFromBinaryFilter(Filter filter) {
+        Object o1 = null;
+        Object o2 = null;
+
+        if (filter instanceof BinarySpatialOperator) {
+            o1 = ((BinarySpatialOperator) filter).getExpression1().evaluate(null);
+            o2 = ((BinarySpatialOperator) filter).getExpression2().evaluate(null);
+        } else if (filter instanceof BinaryComparisonOperator) {
+            o1 = ((BinaryComparisonOperator) filter).getExpression1().evaluate(null);
+            o2 = ((BinaryComparisonOperator) filter).getExpression2().evaluate(null);
+        }
+
+        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
+        filter.accept(extractor, null);
+        String[] props = extractor.getAttributeNames();
+
+        if (props.length == 2) {
+            return props;
+        }
+        if (o1 != null && o2 != null) {
+            return new String[] {resolveValue(o1), resolveValue(o2)};
+        }
+
+        if (o1 != null) {
+            return new String[] {resolveValue(o1), props[0]};
+        } else if (o2 != null) {
+            return new String[] {props[0], resolveValue(o2)};
+        } else {
+            // should be impossible?
+            return null;
+        }
+    }
+
+    // SPATIAL FILTERS
 
     @Override
     public Object visit(BBOX filter, Object extraData) {
-        // Object e1 = filter.getExpression1().accept(this, Geometry.class);
         Envelope envelope = filter.getExpression2().evaluate(null, Envelope.class);
-        String geomAttr = extractSingleGeomAttribute(filter);
+        String geomAttr = extractSingleAttribute(filter);
 
         String clause =
                 String.format(
@@ -126,6 +200,168 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
     }
 
     @Override
+    public Object visit(Intersects filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_INTERSECTS(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(DWithin filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        double distance = filter.getDistance();
+        // String distanceUnits = filter.getDistanceUnits();
+
+        String clause = String.format("ST_DWITHIN(%s, %s, %f)", args[0], args[1], distance);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(Contains filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_CONTAINS(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(Disjoint filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_DISJOINT(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(Touches filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_TOUCHES(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(Equals filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_EQUALS(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(Within filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("ST_WITHIN(%s, %s)", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    // NON-SPATIAL COMPARISON FILTERS
+
+    @Override
+    public Object visit(PropertyIsEqualTo filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s = %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsNotEqualTo filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s != %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsNull filter, Object extraData) {
+        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
+        filter.accept(extractor, null);
+        String[] props = extractor.getAttributeNames();
+
+        String clause = String.format("%s IS NULL", props[0]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsGreaterThan filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s > %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsLessThan filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s < %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsGreaterThanOrEqualTo filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s >= %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsLessThanOrEqualTo filter, Object extraData) {
+        String[] args = getArgsFromBinaryFilter(filter);
+        String clause = String.format("%s <= %s", args[0], args[1]);
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    @Override
+    public Object visit(PropertyIsLike filter, Object extraData) {
+        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
+        filter.accept(extractor, null);
+        String[] props = extractor.getAttributeNames();
+        String clause = String.format("%s LIKE '%s'", props[0], filter.getLiteral());
+
+        clauseFragments.add(clause);
+
+        return null;
+    }
+
+    // BOOLEAN OPERATORS
+
+    @Override
     public Object visit(Or filter, Object extraData) {
         List<Filter> children = filter.getChildren();
         if (children != null) {
@@ -139,12 +375,31 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
     }
 
     @Override
-    public Object visitNullFilter(Object extraData) {
-        throw new UnsupportedOperationException();
+    public Object visit(And filter, Object extraData) {
+        List<Filter> children = filter.getChildren();
+        if (children != null) {
+            for (Filter child : children) {
+                child.accept(this, null);
+                clauseFragments.add("AND");
+            }
+            clauseFragments.removeLast();
+        }
+        return null;
     }
 
     @Override
-    public Object visit(NilExpression expression, Object extraData) {
+    public Object visit(Not filter, Object extraData) {
+        clauseFragments.add("NOT (");
+        filter.getFilter().accept(this, extraData);
+        clauseFragments.add(")");
+
+        return null;
+    }
+
+    // UNSUPPORTED
+
+    @Override
+    public Object visitNullFilter(Object extraData) {
         throw new UnsupportedOperationException();
     }
 
@@ -154,62 +409,12 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
     }
 
     @Override
-    public Object visit(Contains filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public Object visit(Crosses filter, Object extraData) {
         throw new UnsupportedOperationException();
     }
 
     @Override
-    public Object visit(Disjoint filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(DWithin filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Equals filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
     public Object visit(Overlaps filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Touches filter, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Add expression, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Divide expression, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Function function, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Multiply expression, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(Subtract expression, Object extraData) {
         throw new UnsupportedOperationException();
     }
 
@@ -289,16 +494,11 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
     }
 
     @Override
-    public Object visit(Literal expression, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
+    public Object visit(PropertyIsBetween filter, Object extraData) {
+        throw new UnsupportedOperationException();
     }
 
-    @Override
-    public Object visit(PropertyName expression, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
+    // HANDLED ELSEWHERE
 
     @Override
     public Object visit(ExcludeFilter filter, Object extraData) {
@@ -313,85 +513,7 @@ public class BigqueryQueryParser implements FilterVisitor, ExpressionVisitor {
     }
 
     @Override
-    public Object visit(And filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
     public Object visit(Id filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(Not filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsBetween filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsEqualTo filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsNotEqualTo filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsGreaterThan filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsGreaterThanOrEqualTo filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsLessThan filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsLessThanOrEqualTo filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsLike filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(PropertyIsNull filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(Intersects filter, Object extraData) {
-        // TODO Auto-generated method stub
-        return null;
-    }
-
-    @Override
-    public Object visit(Within filter, Object extraData) {
         // TODO Auto-generated method stub
         return null;
     }
