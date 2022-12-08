@@ -1,33 +1,84 @@
 package org.geotools.data.bigquery;
 
-import com.google.cloud.bigquery.BigQueryException;
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFactorySpi;
+import org.geotools.util.KVP;
 import org.geotools.util.logging.Logging;
 
 public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
     private static final Logger LOGGER = Logging.getLogger(BigqueryDataStoreFactory.class);
 
     public static final Param PROJECT_ID =
-            new Param("projectId", String.class, "GCP Project ID", true, null);
+            new Param("Project Id", String.class, "GCP Project ID", true, null);
 
     public static final Param DATASET_NAME =
-            new Param("datasetName", String.class, "BigQuery Dataset Name", true, null);
+            new Param("Dataset Name", String.class, "BigQuery Dataset Name", true, null);
 
     public static final Param SERVICE_ACCOUNT_KEY_FILE =
-            new Param("serviceAccountKeyFile", File.class, "Service Account Key File", false, null);
+            new Param(
+                    "Service Account Key File",
+                    File.class,
+                    "Service Account Key File",
+                    false,
+                    null);
 
-    public static final Param GEOM_COLUMN =
-            new Param("geometryColumn", String.class, "Geometry Column Name", false, "geom");
+    public static final Param ACCESS_METHOD =
+            new Param(
+                    "Access Method",
+                    BigqueryAccessMethod.class,
+                    "Access BigQuery using the Storage API, or the standard BigQuery API",
+                    false,
+                    BigqueryAccessMethod.STANDARD_QUERY_API,
+                    new KVP(Param.OPTIONS, Arrays.asList(BigqueryAccessMethod.values())));
+
+    public static final Param SIMPLIFY =
+            new Param(
+                    "Simplify Geometries in BigQuery",
+                    Boolean.class,
+                    "Use BigQuery's ST_SIMPLIFY function (applicable to STANDARD_QUERY_API)",
+                    false,
+                    true);
+
+    public static final Param USE_QUERY_CACHE =
+            new Param(
+                    "Use Query Cache",
+                    Boolean.class,
+                    "Use temporary query cache in BigQuery (applicable to STANDARD_QUERY_API)",
+                    false,
+                    true);
+
+    public static final Param AUTO_ADD_PARTITION_FILTER =
+            new Param(
+                    "Automatically query most recent Partition",
+                    Boolean.class,
+                    "Whether to auto-include required partition filters to query most recent partition.",
+                    false,
+                    true);
+
+    public static final Param JOB_TIMEOUT =
+            new Param(
+                    "Query Job Timeout (seconds)",
+                    Integer.class,
+                    "BigQuery will attempt to cancel jobs that run longer (applicable to STANDARD_QUERY_API)",
+                    false,
+                    30);
 
     public static final Param[] parametersInfo = {
-        PROJECT_ID, DATASET_NAME, SERVICE_ACCOUNT_KEY_FILE, GEOM_COLUMN
+        PROJECT_ID,
+        DATASET_NAME,
+        SERVICE_ACCOUNT_KEY_FILE,
+        ACCESS_METHOD,
+        SIMPLIFY,
+        USE_QUERY_CACHE,
+        AUTO_ADD_PARTITION_FILTER,
+        JOB_TIMEOUT
     };
 
     private static Pattern projectPattern = Pattern.compile("[a-zA-Z0-9_-]+");
@@ -37,12 +88,12 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     @Override
     public String getDisplayName() {
-        return "Google BigQuery";
+        return "BigQuery Table";
     }
 
     @Override
     public String getDescription() {
-        return "Google BigQuery Dataset";
+        return "Read features from a Google BigQuery Geospatial Table, or View";
     }
 
     @Override
@@ -52,18 +103,28 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     @Override
     public boolean canProcess(Map<String, ?> params) {
-        boolean containsRequired =
-                params.containsKey("projectId") && params.containsKey("datasetName");
+        try {
+            String projectId = (String) PROJECT_ID.lookUp(params);
+            String datasetName = (String) DATASET_NAME.lookUp(params);
+            BigqueryAccessMethod method = (BigqueryAccessMethod) ACCESS_METHOD.lookUp(params);
+            Boolean simplify = (Boolean) SIMPLIFY.lookUp(params);
+            Boolean useCache = (Boolean) USE_QUERY_CACHE.lookUp(params);
 
-        if (!containsRequired) return false;
+            boolean accessMethodValid =
+                    ((method == BigqueryAccessMethod.STORAGE_API && !simplify)
+                            || method == BigqueryAccessMethod.STANDARD_QUERY_API);
+            boolean cacheValid =
+                    ((method == BigqueryAccessMethod.STORAGE_API && !useCache)
+                            || method == BigqueryAccessMethod.STANDARD_QUERY_API);
+            boolean projectValid = projectPattern.matcher(projectId).matches();
+            boolean datasetValid = datasetPattern.matcher(datasetName).matches();
 
-        String projectId = (String) params.get("projectId");
-        String datasetName = (String) params.get("datasetName");
-
-        boolean projectValid = projectPattern.matcher(projectId).matches();
-        boolean datasetValid = datasetPattern.matcher(datasetName).matches();
-
-        return projectValid && datasetValid;
+            return cacheValid && accessMethodValid && projectValid && datasetValid;
+        } catch (IOException e) {
+            System.out.println(e);
+            LOGGER.log(Level.WARNING, e.toString());
+            return false;
+        }
     }
 
     @Override
@@ -80,13 +141,25 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     @Override
     public DataStore createDataStore(Map<String, ?> params) throws IOException {
+        String serviceAccountKeyFileName = (String) params.get("Service Account Key File");
+
         try {
+            File serviceAccountKeyFile = null;
+            if (serviceAccountKeyFileName != null) {
+                serviceAccountKeyFileName = serviceAccountKeyFileName.replace("file:///", "/");
+                serviceAccountKeyFile = new File(serviceAccountKeyFileName);
+            }
+
             return new BigqueryDataStore(
-                    (String) params.get("projectId"),
-                    (String) params.get("datasetName"),
-                    (String) params.get("geometryColumn"),
-                    (File) params.get("serviceAccountKeyFile"));
-        } catch (BigQueryException e) {
+                    (String) PROJECT_ID.lookUp(params),
+                    (String) DATASET_NAME.lookUp(params),
+                    (BigqueryAccessMethod) ACCESS_METHOD.lookUp(params),
+                    (Boolean) SIMPLIFY.lookUp(params),
+                    (Boolean) USE_QUERY_CACHE.lookUp(params),
+                    (Boolean) AUTO_ADD_PARTITION_FILTER.lookUp(params),
+                    (Integer) JOB_TIMEOUT.lookUp(params),
+                    serviceAccountKeyFile);
+        } catch (Exception e) {
             throw new IOException(e);
         }
     }

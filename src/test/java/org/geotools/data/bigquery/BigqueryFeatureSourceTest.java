@@ -1,6 +1,8 @@
 package org.geotools.data.bigquery;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
@@ -11,25 +13,29 @@ import org.geotools.data.DataStoreFinder;
 import org.geotools.data.Query;
 import org.geotools.data.simple.SimpleFeatureCollection;
 import org.geotools.data.simple.SimpleFeatureSource;
+import org.geotools.data.store.ContentFeatureSource;
 import org.junit.Test;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
+import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.type.AttributeDescriptor;
 
 public class BigqueryFeatureSourceTest {
 
     @Test
     public void testGetFeatures() throws IOException {
-        Map<String, String> params = new HashMap<>();
-        params.put("projectId", "bigquery-geotools");
-        params.put("datasetName", "test");
-        params.put("geometryColumn", "geom");
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         DataStore store = DataStoreFinder.getDataStore(params);
 
-        Query q = new Query("counties");
+        Query q = new Query("bigquery-geotools.test.counties");
         q.setMaxFeatures(100);
 
-        SimpleFeatureSource fs = (SimpleFeatureSource) store.getFeatureSource("counties");
+        SimpleFeatureSource fs =
+                (SimpleFeatureSource) store.getFeatureSource("bigquery-geotools.test.counties");
         SimpleFeatureCollection col = fs.getFeatures(q);
 
         assertEquals(100, col.size());
@@ -42,5 +48,68 @@ public class BigqueryFeatureSourceTest {
         assertEquals("Polygon", geom.getGeometryType());
         assertEquals(4326, geom.getSRID());
         assertTrue(geom.isValid());
+    }
+
+    @Test
+    public void testBuildFeatureTypeBasic() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        ContentFeatureSource fs =
+                (ContentFeatureSource) store.getFeatureSource("bigquery-geotools.test.counties");
+
+        SimpleFeatureType featureType = fs.getSchema();
+        assertNotNull(featureType);
+    }
+
+    @Test
+    public void testBuildFeatureTypeOSM() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        ContentFeatureSource fs =
+                (ContentFeatureSource)
+                        store.getFeatureSource("bigquery-geotools.test.planet_nodes");
+
+        SimpleFeatureType featureType = fs.getSchema();
+        assertNotNull(featureType);
+
+        AttributeDescriptor geomAttr = featureType.getDescriptor("geometry");
+        assertTrue((Boolean) geomAttr.getUserData().get("clustering"));
+    }
+
+    @Test
+    public void testBuildFeatureTypePartitioned() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        ContentFeatureSource fs =
+                (ContentFeatureSource)
+                        store.getFeatureSource("bigquery-geotools.test.port_traffic");
+
+        SimpleFeatureType featureType = fs.getSchema();
+        assertNotNull(featureType);
+
+        AttributeDescriptor geomAttr = featureType.getDescriptor("port_geom");
+        assertFalse((Boolean) geomAttr.getUserData().get("clustering"));
+        assertFalse((Boolean) geomAttr.getUserData().get("partitioning"));
+        assertFalse((Boolean) geomAttr.getUserData().get("partitioningRequired"));
+
+        AttributeDescriptor partAttr = featureType.getDescriptor("week_end");
+        assertTrue((Boolean) partAttr.getUserData().get("partitioning"));
+        assertTrue((Boolean) partAttr.getUserData().get("partitioningRequired"));
+        assertEquals("DAY", partAttr.getUserData().get("partitioningType"));
     }
 }

@@ -1,52 +1,32 @@
 package org.geotools.data.bigquery;
 
-import com.google.api.gax.rpc.ServerStream;
-import com.google.cloud.bigquery.storage.v1.AvroRows;
-import com.google.cloud.bigquery.storage.v1.CreateReadSessionRequest;
-import com.google.cloud.bigquery.storage.v1.DataFormat;
-import com.google.cloud.bigquery.storage.v1.ReadRowsRequest;
-import com.google.cloud.bigquery.storage.v1.ReadRowsResponse;
-import com.google.cloud.bigquery.storage.v1.ReadSession;
-import com.google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
-import java.util.logging.Logger;
-import org.apache.avro.Schema;
-import org.apache.avro.generic.GenericDatumReader;
-import org.apache.avro.generic.GenericRecord;
-import org.apache.avro.io.BinaryDecoder;
-import org.apache.avro.io.DatumReader;
-import org.apache.avro.io.DecoderFactory;
+import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Date;
+import java.util.Map;
 import org.geotools.data.Query;
 import org.geotools.data.simple.SimpleFeatureReader;
 import org.geotools.data.store.ContentState;
-import org.geotools.feature.simple.SimpleFeatureBuilder;
-import org.geotools.util.logging.Logging;
-import org.locationtech.jts.geom.Geometry;
-import org.locationtech.jts.io.ParseException;
-import org.locationtech.jts.io.WKTReader;
-import org.opengis.feature.simple.SimpleFeature;
+import org.geotools.factory.CommonFactoryFinder;
 import org.opengis.feature.simple.SimpleFeatureType;
+import org.opengis.feature.type.AttributeDescriptor;
+import org.opengis.filter.Filter;
+import org.opengis.filter.FilterFactory2;
 
-public class BigqueryFeatureReader implements SimpleFeatureReader {
+public abstract class BigqueryFeatureReader implements SimpleFeatureReader {
 
-    private static final Logger LOGGER = Logging.getLogger(BigqueryFeatureReader.class);
+    protected BigqueryDataStore store;
 
-    private SimpleFeatureType featureType;
+    protected SimpleFeatureType featureType;
     protected ContentState state;
-    private int rowIndex;
-    private int rowLimit;
+    protected int rowIndex;
+    protected int rowLimit;
 
-    private ServerStream<ReadRowsResponse> stream;
-    private Iterator<ReadRowsResponse> streamIterator;
-    private final int srid;
-    private final String geomColumn;
-    private final Query query;
+    protected final int srid;
 
-    private final BigqueryAvroReader reader;
+    protected final String geomColumn;
+    protected final Query query;
 
     /**
      * Set up BigQuery Storage API read session
@@ -57,49 +37,14 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
      * @throws IOException
      */
     public BigqueryFeatureReader(ContentState state, Query query) throws IOException {
-
-        BigqueryDataStore store = (BigqueryDataStore) state.getEntry().getDataStore();
-        String projectUri = String.format("projects/%s", store.projectId);
-        String tableUri =
-                String.format(
-                        "projects/%s/datasets/%s/tables/%s",
-                        store.projectId, store.datasetName, state.getEntry().getTypeName());
-
-        this.query = query;
+        this.store = (BigqueryDataStore) state.getEntry().getDataStore();
         this.state = state;
         this.featureType = state.getFeatureType();
         this.srid = store.SRID;
-        this.geomColumn = store.GEOM_COLUMN;
+        this.geomColumn = featureType.getGeometryDescriptor().getLocalName();
         this.rowIndex = -1;
         this.rowLimit = query.getMaxFeatures();
-
-        ReadSession.Builder sessionBuilder =
-                ReadSession.newBuilder()
-                        .setTable(tableUri)
-                        .setDataFormat(DataFormat.AVRO)
-                        .setReadOptions(parseQuery());
-
-        // TODO configure snapshot time
-        CreateReadSessionRequest.Builder builder =
-                CreateReadSessionRequest.newBuilder()
-                        .setParent(projectUri)
-                        .setReadSession(sessionBuilder)
-                        .setMaxStreamCount(1);
-
-        ReadSession session = store.client.createReadSession(builder.build());
-
-        this.reader =
-                new BigqueryAvroReader(
-                        new Schema.Parser().parse(session.getAvroSchema().getSchema()));
-
-        // Preconditions.checkState(session.getStreamsCount() > 0);
-        String streamName = session.getStreams(0).getName();
-
-        ReadRowsRequest readRowsRequest =
-                ReadRowsRequest.newBuilder().setReadStream(streamName).build();
-
-        this.stream = store.client.readRowsCallable().call(readRowsRequest);
-        this.streamIterator = stream.iterator();
+        this.query = decorateQuery(featureType, query);
     }
 
     @Override
@@ -108,106 +53,63 @@ public class BigqueryFeatureReader implements SimpleFeatureReader {
     }
 
     @Override
-    public SimpleFeature next()
-            throws IOException, IllegalArgumentException, NoSuchElementException {
-
-        if (!reader.hasNext()) {
-            reader.decodeRows(streamIterator.next().getAvroRows());
-        }
-        return parseFeature(
-                reader.next(), ++rowIndex, featureType, reader.getSchemaKeys(), srid, geomColumn);
-    }
-
-    @Override
-    public boolean hasNext() throws IOException {
-        return (reader.hasNext() || streamIterator.hasNext()) && rowIndex <= rowLimit;
-    }
-
-    @Override
     public void close() throws IOException {}
 
     /**
-     * Return BQ TableReadOptions from the given Query.
+     * Determine any requirements for querying against the given BigQuery table, and decorate the
+     * Query object where necessary.
      *
+     * @param type
+     * @param query
      * @return
      */
-    private TableReadOptions parseQuery() {
-        BigqueryQueryParser parser = new BigqueryQueryParser(query, getFeatureType());
-        TableReadOptions options = parser.parse().toReadOptions();
+    private Query decorateQuery(SimpleFeatureType type, Query query) {
+        for (AttributeDescriptor attr : type.getAttributeDescriptors()) {
+            Map<Object, Object> userData = attr.getUserData();
 
-        System.out.println(options.getRowRestriction());
-
-        // LOGGER.log(Level.INFO, options.getRowRestriction());
-
-        return options;
-    }
-
-    private static SimpleFeature parseFeature(
-            GenericRecord row,
-            int rowIndex,
-            SimpleFeatureType featureType,
-            List<String> keys,
-            int srid,
-            String geomColumn)
-            throws IOException {
-
-        SimpleFeatureBuilder builder = new SimpleFeatureBuilder(featureType);
-
-        for (String column : keys) {
-            if (column == geomColumn) continue;
-
-            builder.set(column, row.get(column));
-        }
-
-        String geomWkt = row.get(geomColumn).toString();
-
-        try {
-            Geometry geom = new WKTReader().read(geomWkt);
-            geom.setSRID(srid);
-            builder.set(geomColumn, geom);
-        } catch (ParseException e) {
-            throw new IOException(e);
-        }
-        return builder.buildFeature(Integer.toString(rowIndex));
-    }
-
-    private class BigqueryAvroReader {
-
-        private final DatumReader<GenericRecord> datumReader;
-        private BinaryDecoder decoder = null;
-        private GenericRecord row = null;
-        private Schema avroSchema;
-        private List<String> schemaKeys;
-
-        public BigqueryAvroReader(Schema avroSchema) {
-            // Preconditions.checkNotNull(avroSchema);
-            this.avroSchema = avroSchema;
-            this.datumReader = new GenericDatumReader<>(avroSchema);
-        }
-
-        public List<String> getSchemaKeys() {
-            if (schemaKeys != null) return schemaKeys;
-
-            schemaKeys = new ArrayList<String>();
-            for (Schema.Field field : avroSchema.getFields()) {
-                schemaKeys.add(field.name());
+            if ((Boolean) userData.get("partitioningRequired")
+                    && store.autoAddRequiredPartitionFilter) {
+                decorateQueryWithPartitionFilter(attr, query);
             }
-            return schemaKeys;
         }
 
-        public void decodeRows(AvroRows avroRows) {
-            decoder =
-                    DecoderFactory.get()
-                            .binaryDecoder(
-                                    avroRows.getSerializedBinaryRows().toByteArray(), decoder);
-        }
+        return query;
+    }
 
-        public GenericRecord next() throws IOException {
-            return datumReader.read(row, decoder);
-        }
+    /**
+     * Decorate the query object with the required partition filter.
+     *
+     * @param type
+     * @param query
+     * @return
+     */
+    private void decorateQueryWithPartitionFilter(AttributeDescriptor attr, Query query) {
+        FilterFactory2 ff = CommonFactoryFinder.getFilterFactory2(null);
 
-        public boolean hasNext() throws IOException {
-            return decoder != null && !decoder.isEnd();
+        String column = attr.getLocalName();
+        Map<Object, Object> userData = attr.getUserData();
+        String partitionType = (String) userData.get("partitioningType");
+
+        Instant now = Instant.now();
+        Instant partitionOperand;
+        if ("HOUR".equals(partitionType)) {
+            partitionOperand = now.minus(1, ChronoUnit.HOURS);
+        } else if ("DAY".equals(partitionType)) {
+            partitionOperand = now.minus(1, ChronoUnit.DAYS);
+        } else if ("MONTH".equals(partitionType)) {
+            partitionOperand = now.minus(1, ChronoUnit.MONTHS);
+        } else {
+            partitionOperand = now.minus(1, ChronoUnit.YEARS);
+        }
+        Date partitionDate = Date.from(partitionOperand);
+
+        Filter partitionFilter = ff.greaterOrEqual(ff.property(column), ff.literal(partitionDate));
+        if (query.getFilter() == Filter.INCLUDE) {
+            query.setFilter(partitionFilter);
+        } else {
+            System.out.println("FILTER");
+            System.out.println(query.getFilter());
+            query.setFilter(ff.and(query.getFilter(), partitionFilter));
         }
     }
 }

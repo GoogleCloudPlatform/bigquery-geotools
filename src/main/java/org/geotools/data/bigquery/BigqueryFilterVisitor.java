@@ -1,14 +1,18 @@
 package org.geotools.data.bigquery;
 
-import com.google.cloud.bigquery.storage.v1.ReadSession.TableReadOptions;
+import java.text.SimpleDateFormat;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.Deque;
 import java.util.List;
 import java.util.logging.Logger;
 import org.geotools.data.Query;
 import org.geotools.filter.FilterAttributeExtractor;
 import org.geotools.geojson.geom.GeometryJSON;
+import org.geotools.geometry.jts.JTS;
+import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Envelope;
 import org.locationtech.jts.geom.Geometry;
@@ -58,6 +62,7 @@ import org.opengis.filter.temporal.OverlappedBy;
 import org.opengis.filter.temporal.TContains;
 import org.opengis.filter.temporal.TEquals;
 import org.opengis.filter.temporal.TOverlaps;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 /**
  * Parse a geotools Query object and construct TableReadOptions that can be passed to
@@ -65,37 +70,84 @@ import org.opengis.filter.temporal.TOverlaps;
  *
  * @author traviswebb
  */
-public class BigqueryQueryParser implements FilterVisitor {
+@SuppressWarnings("deprecation")
+public class BigqueryFilterVisitor implements FilterVisitor {
 
-    private static final Logger LOGGER = Logging.getLogger(BigqueryQueryParser.class);
+    private static final Logger LOGGER = Logging.getLogger(BigqueryFilterVisitor.class);
 
     private final Query query;
 
     private Deque<String> clauseFragments;
-    private TableReadOptions.Builder builder;
+    private List<ReferencedEnvelope> intersectionEnvelopes;
     private SimpleFeatureType schema;
+    private String geomColumn;
+    private CoordinateReferenceSystem crs;
 
-    public BigqueryQueryParser(Query query, SimpleFeatureType schema) {
+    public BigqueryFilterVisitor(
+            Query query, SimpleFeatureType schema, CoordinateReferenceSystem crs) {
         this.query = query;
         this.schema = schema;
-        this.builder = TableReadOptions.newBuilder();
         this.clauseFragments = new ArrayDeque<String>();
+        this.intersectionEnvelopes = new ArrayList<ReferencedEnvelope>();
+        this.geomColumn = schema.getGeometryDescriptor().getLocalName();
+        this.crs = crs;
+
+        query.getFilter().accept(this, null);
     }
 
-    public BigqueryQueryParser parse() {
-        query.getFilter().accept(this, null);
-
-        builder.setRowRestriction(String.join(" ", clauseFragments));
-
-        if (!query.retrieveAllProperties()) {
-            builder.addAllSelectedFields(Arrays.asList(query.getPropertyNames()));
+    public String getWhereClause() {
+        if (clauseFragments.isEmpty()) {
+            return "TRUE";
         }
 
-        return this;
+        return String.join(" ", clauseFragments);
     }
 
-    public TableReadOptions toReadOptions() throws IllegalStateException {
-        return builder.build();
+    public String getSelectClause(Boolean simplify) {
+        List<String> selectColumns = new ArrayList<String>();
+        if (!query.retrieveAllProperties()) {
+            selectColumns.addAll(Arrays.asList(query.getPropertyNames()));
+            selectColumns.remove(geomColumn);
+        } else {
+            selectColumns.add(String.format("* except (%s)", geomColumn));
+        }
+        if (intersectionEnvelopes.isEmpty()) {
+            selectColumns.add(String.format("ST_ASGEOJSON(%s) as %s", geomColumn, geomColumn));
+            return String.join(", ", selectColumns);
+        }
+
+        ReferencedEnvelope combinedEnvelope = new ReferencedEnvelope();
+        for (Envelope e : intersectionEnvelopes) {
+            combinedEnvelope.expandToInclude(e);
+        }
+        String combinedGeojson = getGeogFromGeojsonSQL(JTS.toGeometry(combinedEnvelope));
+        String intersectionSql =
+                String.format("ST_INTERSECTION(%s, %s)", geomColumn, combinedGeojson);
+
+        if (simplify) {
+            intersectionSql =
+                    String.format(
+                            "ST_SIMPLIFY(%s, %f)",
+                            intersectionSql, getSimplifyTolerance(combinedEnvelope));
+        }
+
+        selectColumns.add(String.format("ST_ASGEOJSON(%s) as %s", intersectionSql, geomColumn));
+
+        return String.join(", ", selectColumns);
+    }
+
+    /**
+     * Return a tolerate between 0.1 and 100 meters based on BBOX size.
+     *
+     * @param envelope
+     * @return
+     */
+    protected Double getSimplifyTolerance(ReferencedEnvelope envelope) {
+        double centerLat = Math.abs(envelope.getMedian(1) / 2d);
+        double metersPerDegree = (40075000 * Math.cos(centerLat)) / 360d;
+        double metersPerPixel = (metersPerDegree * envelope.getWidth()) / 1024d;
+
+        return Math.max(1, Math.min(1000, metersPerPixel));
     }
 
     private String extractSingleAttribute(Filter filter) {
@@ -123,6 +175,9 @@ public class BigqueryQueryParser implements FilterVisitor {
             return Float.toString((Float) value);
         } else if (value instanceof Double) {
             return Double.toString((Double) value);
+        } else if (value instanceof Date) {
+            return "'" + new SimpleDateFormat("yyyy-MM-dd").format(value) + "'";
+
         } else {
             return (String) value;
         }
@@ -177,16 +232,13 @@ public class BigqueryQueryParser implements FilterVisitor {
         Envelope envelope = filter.getExpression2().evaluate(null, Envelope.class);
         String geomAttr = extractSingleAttribute(filter);
 
+        Double[] box = BigqueryUtil.gtEnvelopeToExtent(envelope);
+
         String clause =
-                String.format(
-                        "ST_INTERSECTSBOX(%s, %f, %f, %f, %f)",
-                        geomAttr,
-                        Math.max(envelope.getMinX(), -180),
-                        Math.max(envelope.getMinY(), -90),
-                        Math.min(envelope.getMaxX(), 180),
-                        Math.min(envelope.getMaxY(), 90));
+                String.format("ST_INTERSECTSBOX(" + geomAttr + ", %f, %f, %f, %f)", (Object[]) box);
 
         clauseFragments.add(clause);
+        intersectionEnvelopes.add(new ReferencedEnvelope(box[0], box[2], box[1], box[3], crs));
 
         return null;
     }

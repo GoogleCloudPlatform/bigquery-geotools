@@ -21,50 +21,57 @@ import org.opengis.feature.simple.SimpleFeatureType;
 public class BigqueryDataStoreTest {
 
     @Test
-    public void testGetTableName() {
-        String tableName = BigqueryDataStore.getTableName("bigquery-geotools:test.counties");
-        assertEquals("counties", tableName);
+    public void testGetTypeLabel() {
+        String tableName1 = BigqueryDataStore.getTypeLabel("bigquery-geotools.test.counties");
+        String tableName2 =
+                BigqueryDataStore.getTypeLabel("bigquery-geotools.test_dataset.counties_view");
+        String tableName3 = BigqueryDataStore.getTypeLabel("bigquery-geotools.test.counties");
+
+        assertEquals("bigquery-geotools.test.counties", tableName1);
+        assertEquals("bigquery-geotools.test_dataset.counties_view", tableName2);
+        assertEquals("bigquery-geotools.test.counties", tableName3);
     }
 
     @Test
     public void testCreateTypeNames() throws IOException {
-        Map<String, String> params = new HashMap<>();
-        params.put("projectId", "bigquery-geotools");
-        params.put("datasetName", "test");
-        params.put("geometryColumn", "geom");
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
         DataStore store = DataStoreFinder.getDataStore(params);
 
         String[] names = store.getTypeNames();
 
         assertTrue(names.length > 0);
-        assertEquals(names[0], "counties");
+        assertEquals(names[0], "bigquery-geotools.test.counties");
     }
 
     @Test
     public void testGetSchema() throws IOException {
-        Map<String, String> params = new HashMap<>();
-        params.put("projectId", "bigquery-geotools");
-        params.put("datasetName", "test");
-        params.put("geometryColumn", "geom");
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         DataStore store = DataStoreFinder.getDataStore(params);
 
-        SimpleFeatureType type = store.getSchema("counties");
+        SimpleFeatureType type = store.getSchema("bigquery-geotools.test.counties");
 
-        assertEquals(type.getTypeName(), "counties");
+        assertEquals(type.getTypeName(), "bigquery-geotools.test.counties");
         assertEquals(type.getAttributeCount(), 18);
     }
 
     @Test
     public void testGetFeatureSource() throws IOException {
-        Map<String, String> params = new HashMap<>();
-        params.put("projectId", "bigquery-geotools");
-        params.put("datasetName", "test");
-        params.put("geometryColumn", "geom");
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         DataStore store = DataStoreFinder.getDataStore(params);
 
-        SimpleFeatureSource src = store.getFeatureSource("counties");
+        SimpleFeatureSource src = store.getFeatureSource("bigquery-geotools.test.counties");
         ReferencedEnvelope bbox = src.getBounds();
 
         assertEquals(144, bbox.getMinX(), 1);
@@ -75,13 +82,13 @@ public class BigqueryDataStoreTest {
 
     @Test
     public void testGetFeatureReader() throws IOException {
-        Map<String, String> params = new HashMap<>();
-        params.put("projectId", "bigquery-geotools");
-        params.put("datasetName", "test");
-        params.put("geometryColumn", "geom");
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         DataStore store = DataStoreFinder.getDataStore(params);
-        Query q = new Query("counties");
+        Query q = new Query("bigquery-geotools.test.counties");
         q.setMaxFeatures(10);
 
         FeatureReader reader = store.getFeatureReader(q, Transaction.AUTO_COMMIT);

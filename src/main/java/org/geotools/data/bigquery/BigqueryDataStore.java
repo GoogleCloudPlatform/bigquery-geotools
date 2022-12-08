@@ -13,8 +13,10 @@ import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.Table;
+import com.google.cloud.bigquery.TableDefinition;
 import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
 import com.google.cloud.bigquery.storage.v1.BigQueryReadSettings;
+import com.google.common.collect.ImmutableMap;
 import io.grpc.LoadBalancerRegistry;
 import io.grpc.internal.PickFirstLoadBalancerProvider;
 import java.io.File;
@@ -22,13 +24,16 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.logging.Logger;
 import org.geotools.data.store.ContentDataStore;
 import org.geotools.data.store.ContentEntry;
 import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.feature.NameImpl;
+import org.geotools.referencing.crs.DefaultGeographicCRS;
 import org.geotools.util.logging.Logging;
 import org.opengis.feature.type.Name;
+import org.opengis.referencing.crs.CoordinateReferenceSystem;
 
 /** Geotools datastore for BigQuery */
 public class BigqueryDataStore extends ContentDataStore {
@@ -38,15 +43,31 @@ public class BigqueryDataStore extends ContentDataStore {
     /** Parameterize this if/when BQ supports non-WGS84 SRIDs. Constant for now. */
     protected final int SRID = 4326;
 
-    protected final String GEOM_COLUMN;
+    protected final CoordinateReferenceSystem CRS = DefaultGeographicCRS.WGS84;
 
-    protected final BigQuery bq;
-    protected final BigQueryReadClient client;
+    protected BigQuery queryClient;
+    protected BigQueryReadClient storageClient;
 
     protected final String projectId;
     protected final String datasetName;
     protected final File serviceAccountKeyFile;
+    protected final BigqueryAccessMethod accessMethod;
+    protected final Boolean simplify;
+    protected final Boolean useQueryCache;
+    protected final Boolean autoAddRequiredPartitionFilter;
+    protected final Integer jobTimeoutSeconds;
+
     protected GoogleCredentials credentials;
+
+    /** Table "types" to support in geoserver. */
+    protected static final Map<TableDefinition.Type, String> TABLE_TYPE_MAP =
+            new ImmutableMap.Builder<TableDefinition.Type, String>()
+                    .put(TableDefinition.Type.TABLE, "Table")
+                    // .put(TableDefinition.Type.EXTERNAL, "External")
+                    // .put(TableDefinition.Type.MATERIALIZED_VIEW, "Materialized View")
+                    // .put(TableDefinition.Type.MODEL, "ML Model")
+                    // .put(TableDefinition.Type.VIEW, "View")
+                    .build();
 
     /**
      * Construct a BigqueryDatastore for a given project and dataset.
@@ -55,14 +76,27 @@ public class BigqueryDataStore extends ContentDataStore {
      * @param datasetName
      */
     public BigqueryDataStore(
-            String projectId, String datasetName, String geomColumn, File serviceAccountKeyFile)
+            String projectId,
+            String datasetName,
+            BigqueryAccessMethod accessMethod,
+            Boolean simplify,
+            Boolean useQueryCache,
+            Boolean autoAddRequiredPartitionFilter,
+            Integer jobTimeoutSeconds,
+            File serviceAccountKeyFile)
             throws IOException {
-        this.GEOM_COLUMN = geomColumn;
-        this.projectId = projectId;
-        this.datasetName = datasetName;
-        this.serviceAccountKeyFile = serviceAccountKeyFile;
 
         this.setNamespaceURI(null);
+
+        this.projectId = projectId;
+        this.datasetName = datasetName;
+        this.accessMethod = accessMethod;
+        this.simplify = simplify == null ? false : simplify;
+        this.useQueryCache = useQueryCache == null ? false : useQueryCache;
+        this.jobTimeoutSeconds = jobTimeoutSeconds;
+        this.serviceAccountKeyFile = serviceAccountKeyFile;
+        this.autoAddRequiredPartitionFilter =
+                autoAddRequiredPartitionFilter == null ? false : autoAddRequiredPartitionFilter;
 
         BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
         BigQueryReadSettings.Builder settingsBuilder = BigQueryReadSettings.newBuilder();
@@ -76,10 +110,12 @@ public class BigqueryDataStore extends ContentDataStore {
             settingsBuilder.setCredentialsProvider(FixedCredentialsProvider.create(credentials));
         }
 
-        this.bq = builder.setProjectId(projectId).build().getService();
-        this.client = BigQueryReadClient.create(settingsBuilder.build());
+        this.queryClient = builder.setProjectId(projectId).build().getService();
 
-        LoadBalancerRegistry.getDefaultRegistry().register(new PickFirstLoadBalancerProvider());
+        if (accessMethod == BigqueryAccessMethod.STORAGE_API) {
+            this.storageClient = BigQueryReadClient.create(settingsBuilder.build());
+            LoadBalancerRegistry.getDefaultRegistry().register(new PickFirstLoadBalancerProvider());
+        }
     }
 
     @Override
@@ -87,12 +123,16 @@ public class BigqueryDataStore extends ContentDataStore {
     protected List<Name> createTypeNames() throws IOException {
         List<Name> typeNames = new ArrayList<>();
         try {
-            Page<Table> tables = bq.listTables(this.datasetName, TableListOption.pageSize(100));
+            Page<Table> tables = queryClient.listTables(datasetName, TableListOption.pageSize(100));
             for (Table table : tables.iterateAll()) {
-                Table hydratedTable = bq.getTable(table.getTableId());
-                Schema schema = hydratedTable.getDefinition().getSchema();
-                if (null != getTableGeometryColumn(schema)) {
-                    typeNames.add(new NameImpl(getTableName(table.getGeneratedId())));
+                Table hydratedTable = queryClient.getTable(table.getTableId());
+                TableDefinition tableDef = hydratedTable.getDefinition();
+                Schema schema = tableDef.getSchema();
+                TableDefinition.Type type = tableDef.getType();
+                String geomColumn = getTableGeometryColumn(schema);
+
+                if (TABLE_TYPE_MAP.containsKey(type) && null != geomColumn) {
+                    typeNames.add(new NameImpl(getTypeLabel(table.getGeneratedId())));
                 }
             }
         } catch (BigQueryException e) {
@@ -102,9 +142,8 @@ public class BigqueryDataStore extends ContentDataStore {
         return typeNames;
     }
 
-    public static String getTableName(String tableName) {
-        String[] parts = tableName.split("\\.");
-        return parts[parts.length - 1];
+    public static String getTypeLabel(String fullTableName) {
+        return fullTableName.replace(":", ".");
     }
 
     protected String getTableGeometryColumn(Schema schema) {
@@ -125,6 +164,6 @@ public class BigqueryDataStore extends ContentDataStore {
     }
 
     BigQuery read() throws IOException {
-        return bq;
+        return queryClient;
     }
 }

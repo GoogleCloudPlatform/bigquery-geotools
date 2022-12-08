@@ -11,15 +11,17 @@ public class BigqueryDataStoreFactoryTest {
     public void testCanProcess() {
         BigqueryDataStoreFactory factory = new BigqueryDataStoreFactory();
 
-        Map<String, String> validMap = new HashMap<String, String>();
-        validMap.put("projectId", "valid-project");
-        validMap.put("datasetName", "valid_dataset");
+        Map<String, Object> validMap = new HashMap<String, Object>();
+        validMap.put("Project Id", "valid-project");
+        validMap.put("Dataset Name", "valid_dataset");
+        validMap.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         assertTrue(factory.canProcess(validMap));
 
         Map<String, String> invalidMap = new HashMap<String, String>();
-        validMap.put("projectId", "12**&hello");
-        validMap.put("datasetName", "garbage===");
+        validMap.put("Project Id", "12**&hello");
+        validMap.put("Dataset Name", "garbage===");
+        validMap.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
 
         assertTrue(!factory.canProcess(invalidMap));
     }
