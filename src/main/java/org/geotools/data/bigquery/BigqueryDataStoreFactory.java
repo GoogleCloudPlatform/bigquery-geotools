@@ -137,7 +137,7 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
             return cacheValid && accessMethodValid && projectValid && datasetValid;
         } catch (IOException e) {
-            System.out.println(e);
+            // System.out.println(e);
             LOGGER.log(Level.WARNING, e.toString());
             return false;
         }

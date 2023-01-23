@@ -123,8 +123,6 @@ public abstract class BigqueryFeatureReader implements SimpleFeatureReader {
         if (query.getFilter() == Filter.INCLUDE) {
             query.setFilter(partitionFilter);
         } else {
-            System.out.println("FILTER");
-            System.out.println(query.getFilter());
             query.setFilter(ff.and(query.getFilter(), partitionFilter));
         }
     }
