@@ -6,11 +6,11 @@ Add [BigQuery](https://cloud.google.com/bigquery) support to [Geoserver](https:/
 
 ## Install
 
-Build or download the JAR and copy it into geoserver's `WEB-INF/lib` folder in the same way you install other geoserver plugins.
+Build or download the JARs and copy them into geoserver's `WEB-INF/lib` folder in the same way you install other geoserver plugins.
 
 ### Download
 
-A JAR built against JDK 8 is available in the Github releases section.
+A `.zip` containing the `bigquery-geotools` JAR and required dependency JARs is built against JDK 8 is available in under [releases](https://github.com/GoogleCloudPlatform/bigquery-geotools/releases).
 
 ### Build
 
