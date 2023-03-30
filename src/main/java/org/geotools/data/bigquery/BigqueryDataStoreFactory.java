@@ -158,30 +158,35 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
     @Override
     public DataStore createDataStore(Map<String, ?> params) throws IOException {
         String serviceAccountKeyFileName = (String) params.get("Service Account Key File");
-
-        try {
-            File serviceAccountKeyFile = null;
-            if (serviceAccountKeyFileName != null) {
-                serviceAccountKeyFileName = serviceAccountKeyFileName.replace("file:///", "/");
-                serviceAccountKeyFile = new File(serviceAccountKeyFileName);
-            }
-
-            return new BigqueryDataStore(
-                    (String) PROJECT_ID.lookUp(params),
-                    (String) DATASET_NAME.lookUp(params),
-                    (BigqueryAccessMethod) ACCESS_METHOD.lookUp(params),
-                    (Boolean) SIMPLIFY.lookUp(params),
-                    (Boolean) USE_QUERY_CACHE.lookUp(params),
-                    (Boolean) AUTO_ADD_PARTITION_FILTER.lookUp(params),
-                    (Integer) JOB_TIMEOUT.lookUp(params),
-                    serviceAccountKeyFile);
-        } catch (Exception e) {
-            throw new IOException(e);
+        File keyFile = null;
+        if (serviceAccountKeyFileName != null) {
+            keyFile = new File(getCompatibleKeyPath(serviceAccountKeyFileName));
         }
+
+        return new BigqueryDataStore(
+                (String) PROJECT_ID.lookUp(params),
+                (String) DATASET_NAME.lookUp(params),
+                (BigqueryAccessMethod) ACCESS_METHOD.lookUp(params),
+                (Boolean) SIMPLIFY.lookUp(params),
+                (Boolean) USE_QUERY_CACHE.lookUp(params),
+                (Boolean) AUTO_ADD_PARTITION_FILTER.lookUp(params),
+                (Integer) JOB_TIMEOUT.lookUp(params),
+                keyFile);
     }
 
     @Override
     public DataStore createNewDataStore(Map<String, ?> params) throws IOException {
         return createDataStore(params);
+    }
+
+    public String getCompatibleKeyPath(String filePath) throws IOException {
+        if (filePath == null) return null;
+
+        if (filePath.matches("file:\\/\\/.*")) {
+            return filePath.replace("file://", "");
+        } else {
+            String dataDir = System.getenv("GEOSERVER_DATA_DIR");
+            return filePath.replace("file:", dataDir + "/");
+        }
     }
 }

@@ -41,6 +41,7 @@ You can use one of three authentication methods to connect to BigQuery, dependin
 2. Set the `GOOGLE_APPLICATION_CREDENTIALS` environment variable
 
 3. Export a service account key JSON file, add it to disk, and manually select the file when configuring the BigQuery data source.
+*Note*: Do not store the service account key file in the geoserver data directory, it may not be secure there.
 
 ## Usage
 
