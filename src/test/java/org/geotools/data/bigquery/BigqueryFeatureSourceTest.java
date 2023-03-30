@@ -83,6 +83,40 @@ public class BigqueryFeatureSourceTest {
     }
 
     @Test
+    public void testBuildFeatureTypeView() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        ContentFeatureSource fs =
+                (ContentFeatureSource)
+                        store.getFeatureSource("bigquery-geotools.test.counties_virginia_view");
+
+        SimpleFeatureType featureType = fs.getSchema();
+        assertNotNull(featureType);
+    }
+
+    @Test
+    public void testBuildFeatureTypeMaterializedView() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        ContentFeatureSource fs =
+                (ContentFeatureSource)
+                        store.getFeatureSource("bigquery-geotools.test.counties_virginia_mview");
+
+        SimpleFeatureType featureType = fs.getSchema();
+        assertNotNull(featureType);
+    }
+
+    @Test
     public void testBuildFeatureTypeOSM() throws IOException {
         Map<String, Object> params = new HashMap<>();
         params.put("Project Id", "bigquery-geotools");

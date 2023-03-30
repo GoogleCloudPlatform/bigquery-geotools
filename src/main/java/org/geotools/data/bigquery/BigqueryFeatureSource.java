@@ -21,12 +21,14 @@ import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.FieldList;
 import com.google.cloud.bigquery.FieldValueList;
 import com.google.cloud.bigquery.JobException;
+import com.google.cloud.bigquery.MaterializedViewDefinition;
 import com.google.cloud.bigquery.QueryJobConfiguration;
 import com.google.cloud.bigquery.RangePartitioning;
 import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.StandardTableDefinition;
 import com.google.cloud.bigquery.Table;
+import com.google.cloud.bigquery.TableDefinition;
 import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.TableResult;
 import com.google.cloud.bigquery.TimePartitioning;
@@ -152,13 +154,26 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
     protected SimpleFeatureType buildFeatureType() throws IOException {
         BigqueryDataStore store = getDataStore();
         Table tableRef = store.queryClient.getTable(TableId.of(store.datasetName, tableName));
-        StandardTableDefinition tableDef = tableRef.getDefinition();
+
+        TableDefinition tableDef = tableRef.getDefinition();
+
         Schema schema = tableDef.getSchema();
         FieldList fields = schema.getFields();
-        TimePartitioning timePartition = tableDef.getTimePartitioning();
-        RangePartitioning rangePartition = tableDef.getRangePartitioning();
 
-        Clustering tableClustering = tableDef.getClustering();
+        TimePartitioning timePartition = null;
+        RangePartitioning rangePartition = null;
+        Clustering tableClustering = null;
+
+        if (tableDef instanceof StandardTableDefinition) {
+            timePartition = ((StandardTableDefinition) tableDef).getTimePartitioning();
+            rangePartition = ((StandardTableDefinition) tableDef).getRangePartitioning();
+            tableClustering = ((StandardTableDefinition) tableDef).getClustering();
+        } else if (tableDef instanceof MaterializedViewDefinition) {
+            timePartition = ((MaterializedViewDefinition) tableDef).getTimePartitioning();
+            rangePartition = ((MaterializedViewDefinition) tableDef).getRangePartitioning();
+            tableClustering = ((MaterializedViewDefinition) tableDef).getClustering();
+        }
+
         List<String> clusterFields =
                 tableClustering != null ? tableClustering.getFields() : new ArrayList<String>();
         String timePartitionField =

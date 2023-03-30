@@ -64,6 +64,22 @@ public class BigqueryDataStoreTest {
     }
 
     @Test
+    public void testCreateTypeNamesWithViews() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        String[] names = store.getTypeNames();
+
+        assertTrue(names.length > 0);
+        assertEquals(names[1], "bigquery-geotools.test.counties_virginia_mview");
+        assertEquals(names[2], "bigquery-geotools.test.counties_virginia_view");
+    }
+
+    @Test
     public void testGetSchema() throws IOException {
         Map<String, Object> params = new HashMap<>();
         params.put("Project Id", "bigquery-geotools");

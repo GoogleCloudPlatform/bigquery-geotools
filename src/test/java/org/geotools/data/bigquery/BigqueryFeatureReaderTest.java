@@ -58,6 +58,52 @@ public class BigqueryFeatureReaderTest {
     }
 
     @Test
+    public void testSimpleViewQuery() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        Query q = new Query("bigquery-geotools.test.counties_virginia_view");
+        q.setMaxFeatures(3);
+
+        FeatureReader reader = store.getFeatureReader(q, Transaction.AUTO_COMMIT);
+
+        for (int i = 0; i < 3; i++) {
+            assertTrue(reader.hasNext());
+
+            SimpleFeature f = (SimpleFeature) reader.next();
+            assertNotNull(f);
+        }
+        assertFalse(reader.hasNext());
+    }
+
+    @Test
+    public void testSimpleMaterializedViewQuery() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+
+        Query q = new Query("bigquery-geotools.test.counties_virginia_mview");
+        q.setMaxFeatures(3);
+
+        FeatureReader reader = store.getFeatureReader(q, Transaction.AUTO_COMMIT);
+
+        for (int i = 0; i < 3; i++) {
+            assertTrue(reader.hasNext());
+
+            SimpleFeature f = (SimpleFeature) reader.next();
+            assertNotNull(f);
+        }
+        assertFalse(reader.hasNext());
+    }
+
+    @Test
     public void testDecorateQueryWithAutoPartitionFilter() throws IOException {
         Map<String, Object> params = new HashMap<>();
         params.put("Project Id", "bigquery-geotools");

@@ -79,10 +79,10 @@ public class BigqueryDataStore extends ContentDataStore {
     protected static final Map<TableDefinition.Type, String> TABLE_TYPE_MAP =
             new ImmutableMap.Builder<TableDefinition.Type, String>()
                     .put(TableDefinition.Type.TABLE, "Table")
+                    .put(TableDefinition.Type.VIEW, "View")
+                    .put(TableDefinition.Type.MATERIALIZED_VIEW, "Materialized View")
                     // .put(TableDefinition.Type.EXTERNAL, "External")
-                    // .put(TableDefinition.Type.MATERIALIZED_VIEW, "Materialized View")
                     // .put(TableDefinition.Type.MODEL, "ML Model")
-                    // .put(TableDefinition.Type.VIEW, "View")
                     .build();
 
     /**
