@@ -72,6 +72,7 @@ public class BigqueryDataStore extends ContentDataStore {
     protected final Boolean useQueryCache;
     protected final Boolean autoAddRequiredPartitionFilter;
     protected final Integer jobTimeoutSeconds;
+    protected final BigqueryPregenerateOptions pregen;
 
     protected GoogleCredentials credentials;
 
@@ -99,6 +100,7 @@ public class BigqueryDataStore extends ContentDataStore {
             Boolean useQueryCache,
             Boolean autoAddRequiredPartitionFilter,
             Integer jobTimeoutSeconds,
+            BigqueryPregenerateOptions pregen,
             File serviceAccountKeyFile)
             throws IOException {
 
@@ -110,6 +112,7 @@ public class BigqueryDataStore extends ContentDataStore {
         this.simplify = simplify == null ? false : simplify;
         this.useQueryCache = useQueryCache == null ? false : useQueryCache;
         this.jobTimeoutSeconds = jobTimeoutSeconds;
+        this.pregen = pregen;
         this.serviceAccountKeyFile = serviceAccountKeyFile;
         this.autoAddRequiredPartitionFilter =
                 autoAddRequiredPartitionFilter == null ? false : autoAddRequiredPartitionFilter;

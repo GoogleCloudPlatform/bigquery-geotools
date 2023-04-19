@@ -56,11 +56,20 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     public static final Param SIMPLIFY =
             new Param(
-                    "Simplify Geometries in BigQuery",
+                    "Simplify Geometries on-the-fly in BigQuery",
                     Boolean.class,
                     "Use BigQuery's ST_SIMPLIFY function (applicable to STANDARD_QUERY_API)",
                     false,
                     true);
+
+    public static final Param PREGENERATE_VIEWS =
+            new Param(
+                    "Pregenerate Materialized Views with simplified geometries",
+                    BigqueryPregenerateOptions.class,
+                    "Pregenerate Materialized Views with simplified geometries",
+                    false,
+                    BigqueryPregenerateOptions.MV_NONE,
+                    new KVP(Param.OPTIONS, Arrays.asList(BigqueryPregenerateOptions.values())));
 
     public static final Param USE_QUERY_CACHE =
             new Param(
@@ -92,6 +101,7 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
         SERVICE_ACCOUNT_KEY_FILE,
         ACCESS_METHOD,
         SIMPLIFY,
+        PREGENERATE_VIEWS,
         USE_QUERY_CACHE,
         AUTO_ADD_PARTITION_FILTER,
         JOB_TIMEOUT
@@ -124,6 +134,8 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
             String datasetName = (String) DATASET_NAME.lookUp(params);
             BigqueryAccessMethod method = (BigqueryAccessMethod) ACCESS_METHOD.lookUp(params);
             Boolean simplify = (Boolean) SIMPLIFY.lookUp(params);
+            BigqueryPregenerateOptions pregen =
+                    (BigqueryPregenerateOptions) PREGENERATE_VIEWS.lookUp(params);
             Boolean useCache = (Boolean) USE_QUERY_CACHE.lookUp(params);
 
             boolean accessMethodValid =
@@ -134,8 +146,9 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
                             || method == BigqueryAccessMethod.STANDARD_QUERY_API);
             boolean projectValid = projectPattern.matcher(projectId).matches();
             boolean datasetValid = datasetPattern.matcher(datasetName).matches();
+            boolean pregenValid = pregen == BigqueryPregenerateOptions.MV_NONE ? simplify : true;
 
-            return cacheValid && accessMethodValid && projectValid && datasetValid;
+            return cacheValid && accessMethodValid && projectValid && datasetValid && pregenValid;
         } catch (IOException e) {
             // System.out.println(e);
             LOGGER.log(Level.WARNING, e.toString());
@@ -171,6 +184,7 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
                 (Boolean) USE_QUERY_CACHE.lookUp(params),
                 (Boolean) AUTO_ADD_PARTITION_FILTER.lookUp(params),
                 (Integer) JOB_TIMEOUT.lookUp(params),
+                (BigqueryPregenerateOptions) PREGENERATE_VIEWS.lookUp(params),
                 keyFile);
     }
 

@@ -19,8 +19,13 @@ package org.geotools.data.bigquery;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
+import com.google.cloud.bigquery.BigQuery;
+import com.google.cloud.bigquery.BigQueryOptions;
+import com.google.cloud.bigquery.QueryJobConfiguration;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import org.geotools.data.DataStore;
 import org.geotools.data.DataStoreFinder;
@@ -29,12 +34,38 @@ import org.geotools.data.Query;
 import org.geotools.data.Transaction;
 import org.geotools.data.simple.SimpleFeatureSource;
 import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.junit.Before;
 import org.junit.Test;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.simple.SimpleFeatureType;
 
 public class BigqueryDataStoreTest {
+
+    @Before
+    public void cleanTables() {
+        BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
+        BigQuery queryClient = builder.setProjectId("bigquery-geotools").build().getService();
+
+        String sql1 =
+                "drop materialized view if exists `bigquery-geotools.test.counties_pregen_1m`";
+        String sql2 =
+                "drop materialized view if exists `bigquery-geotools.test.counties_pregen_10m`";
+        String sql3 =
+                "drop materialized view if exists `bigquery-geotools.test.counties_pregen_100m`";
+
+        QueryJobConfiguration qConfig1 = QueryJobConfiguration.newBuilder(sql1).build();
+        QueryJobConfiguration qConfig2 = QueryJobConfiguration.newBuilder(sql2).build();
+        QueryJobConfiguration qConfig3 = QueryJobConfiguration.newBuilder(sql3).build();
+
+        try {
+            //    queryClient.query(qConfig1);
+            //    queryClient.query(qConfig2);
+            //    queryClient.query(qConfig3);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
     @Test
     public void testGetTypeLabel() {
@@ -72,11 +103,11 @@ public class BigqueryDataStoreTest {
 
         DataStore store = DataStoreFinder.getDataStore(params);
 
-        String[] names = store.getTypeNames();
+        List<String> names = Arrays.asList(store.getTypeNames());
 
-        assertTrue(names.length > 0);
-        assertEquals(names[1], "bigquery-geotools.test.counties_virginia_mview");
-        assertEquals(names[2], "bigquery-geotools.test.counties_virginia_view");
+        assertTrue(names.size() > 0);
+        assertTrue(names.contains("bigquery-geotools.test.counties_virginia_mview"));
+        assertTrue(names.contains("bigquery-geotools.test.counties_virginia_view"));
     }
 
     @Test

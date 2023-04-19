@@ -120,7 +120,7 @@ public class BigqueryStorageReader extends BigqueryFeatureReader {
      */
     private TableReadOptions getReadOptionsFromQuery() {
         BigqueryFilterVisitor parser =
-                new BigqueryFilterVisitor(query, getFeatureType(), store.CRS);
+                new BigqueryFilterVisitor(query, getFeatureType(), store.CRS, store.pregen);
         TableReadOptions.Builder builder = TableReadOptions.newBuilder();
 
         builder.setRowRestriction(parser.toString());

@@ -27,7 +27,6 @@ import java.util.logging.Logger;
 import org.geotools.data.Query;
 import org.geotools.filter.FilterAttributeExtractor;
 import org.geotools.geojson.geom.GeometryJSON;
-import org.geotools.geometry.jts.JTS;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Envelope;
@@ -94,20 +93,30 @@ public class BigqueryFilterVisitor implements FilterVisitor {
     private final Query query;
 
     private Deque<String> clauseFragments;
-    private List<ReferencedEnvelope> intersectionEnvelopes;
+    // private List<ReferencedEnvelope> intersectionEnvelopes;
     private SimpleFeatureType schema;
     private String geomColumn;
+    private final String geomColumnOriginal;
     private CoordinateReferenceSystem crs;
+    // private ReferencedEnvelope combinedEnvelope;
+    private int simplifyTolerance;
+    private BigqueryPregenerateOptions pregen;
 
     public BigqueryFilterVisitor(
-            Query query, SimpleFeatureType schema, CoordinateReferenceSystem crs) {
+            Query query,
+            SimpleFeatureType schema,
+            CoordinateReferenceSystem crs,
+            BigqueryPregenerateOptions pregen) {
         this.query = query;
         this.schema = schema;
         this.clauseFragments = new ArrayDeque<String>();
-        this.intersectionEnvelopes = new ArrayList<ReferencedEnvelope>();
-        this.geomColumn = schema.getGeometryDescriptor().getLocalName();
+        this.geomColumnOriginal = schema.getGeometryDescriptor().getLocalName();
+        this.geomColumn = geomColumnOriginal;
         this.crs = crs;
+        this.pregen = pregen;
+        this.simplifyTolerance = 0;
 
+        // run parser
         query.getFilter().accept(this, null);
     }
 
@@ -123,47 +132,30 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         List<String> selectColumns = new ArrayList<String>();
         if (!query.retrieveAllProperties()) {
             selectColumns.addAll(Arrays.asList(query.getPropertyNames()));
-            selectColumns.remove(geomColumn);
+            selectColumns.remove(geomColumnOriginal);
         } else {
-            selectColumns.add(String.format("* except (%s)", geomColumn));
-        }
-        if (intersectionEnvelopes.isEmpty()) {
-            selectColumns.add(String.format("ST_ASGEOJSON(%s) as %s", geomColumn, geomColumn));
-            return String.join(", ", selectColumns);
+            selectColumns.add(String.format("* except (%s)", geomColumnOriginal));
         }
 
-        ReferencedEnvelope combinedEnvelope = new ReferencedEnvelope();
-        for (Envelope e : intersectionEnvelopes) {
-            combinedEnvelope.expandToInclude(e);
-        }
-        String combinedGeojson = getGeogFromGeojsonSQL(JTS.toGeometry(combinedEnvelope));
-        String intersectionSql =
-                String.format("ST_INTERSECTION(%s, %s)", geomColumn, combinedGeojson);
-
-        if (simplify) {
-            intersectionSql =
-                    String.format(
-                            "ST_SIMPLIFY(%s, %f)",
-                            intersectionSql, getSimplifyTolerance(combinedEnvelope));
-        }
-
-        selectColumns.add(String.format("ST_ASGEOJSON(%s) as %s", intersectionSql, geomColumn));
+        selectColumns.add(
+                String.format("ST_ASGEOJSON(%s) as %s", this.geomColumn, this.geomColumnOriginal));
 
         return String.join(", ", selectColumns);
     }
 
     /**
-     * Return a tolerate between 0.1 and 100 meters based on BBOX size.
+     * Return a tolerance of 1, 10, or 100 meters depending on envelope size
      *
      * @param envelope
-     * @return
+     * @return tolerance
      */
-    protected Double getSimplifyTolerance(ReferencedEnvelope envelope) {
+    protected Integer getSimplifyTolerance(ReferencedEnvelope envelope) {
         double centerLat = Math.abs(envelope.getMedian(1) / 2d);
+        double envelopeWidth = envelope.getWidth();
         double metersPerDegree = (40075000 * Math.cos(centerLat)) / 360d;
-        double metersPerPixel = (metersPerDegree * envelope.getWidth()) / 1024d;
+        double metersPerPixel = Math.abs((metersPerDegree * envelopeWidth) / 1024d);
 
-        return Math.max(1, Math.min(1000, metersPerPixel));
+        return (int) Math.min(1000, Math.pow(10.0, Math.floor(Math.log10(metersPerPixel))));
     }
 
     private String extractSingleAttribute(Filter filter) {
@@ -249,12 +241,24 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         String geomAttr = extractSingleAttribute(filter);
 
         Double[] box = BigqueryUtil.gtEnvelopeToExtent(envelope);
+        ReferencedEnvelope refEnvelope =
+                new ReferencedEnvelope(box[0], box[2], box[1], box[3], crs);
+
+        this.simplifyTolerance = getSimplifyTolerance(refEnvelope);
+
+        if (pregen != null
+                && pregen != BigqueryPregenerateOptions.MV_NONE
+                && this.simplifyTolerance > 0
+                && geomAttr == this.geomColumnOriginal
+        /*&& !query.retrieveAllProperties() */ ) {
+            geomAttr = String.format("ST_SIMPLIFY(%s, %s)", geomColumnOriginal, simplifyTolerance);
+            this.geomColumn = geomAttr;
+        }
 
         String clause =
                 String.format("ST_INTERSECTSBOX(" + geomAttr + ", %f, %f, %f, %f)", (Object[]) box);
 
         clauseFragments.add(clause);
-        intersectionEnvelopes.add(new ReferencedEnvelope(box[0], box[2], box[1], box[3], crs));
 
         return null;
     }
@@ -273,7 +277,6 @@ public class BigqueryFilterVisitor implements FilterVisitor {
     public Object visit(DWithin filter, Object extraData) {
         String[] args = getArgsFromBinaryFilter(filter);
         double distance = filter.getDistance();
-        // String distanceUnits = filter.getDistanceUnits();
 
         String clause = String.format("ST_DWITHIN(%s, %s, %f)", args[0], args[1], distance);
 

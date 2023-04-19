@@ -66,6 +66,7 @@ public class BigqueryFilterVisitorTest {
     FilterFactory2 ff;
     WKTParser wktParser;
     CoordinateReferenceSystem CRS = DefaultGeographicCRS.WGS84;
+    BigqueryPregenerateOptions pregenNone = BigqueryPregenerateOptions.MV_NONE;
 
     @Before
     public void setupFeatureType() {
@@ -116,7 +117,8 @@ public class BigqueryFilterVisitorTest {
 
         Query q = new Query("counties", bbox1);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_INTERSECTSBOX(geom, -78.678500, 36.004900, -74.415800, 38.449300)",
@@ -130,7 +132,8 @@ public class BigqueryFilterVisitorTest {
         Filter intersectsFilter = ff.intersects(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", intersectsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true))",
@@ -151,7 +154,8 @@ public class BigqueryFilterVisitorTest {
 
         Query q = new Query("counties", orFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.3,36.8]}', make_valid => true)) OR ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.3,36.8]}', make_valid => true))",
@@ -172,7 +176,8 @@ public class BigqueryFilterVisitorTest {
 
         Query q = new Query("counties", andFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.3,36.8]}', make_valid => true)) AND ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.3,36.8]}', make_valid => true))",
@@ -186,7 +191,8 @@ public class BigqueryFilterVisitorTest {
         Filter intersectsFilter = ff.intersects(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", intersectsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_INTERSECTS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Polygon\",\"coordinates\":[[[-76.2,36.8],[-76.1,36.8],[-76.1,36.7],[-76.3,36.6],[-76.2,36.8]]]}', make_valid => true))",
@@ -202,7 +208,8 @@ public class BigqueryFilterVisitorTest {
         Filter dwithinFilter = ff.dwithin(ff.property("geom"), ff.literal(geom), distance, units);
         Query q = new Query("counties", dwithinFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_DWITHIN(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true), 123.450000)",
@@ -216,7 +223,8 @@ public class BigqueryFilterVisitorTest {
         Filter containsFilter = ff.contains(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", containsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_CONTAINS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true))",
@@ -230,7 +238,8 @@ public class BigqueryFilterVisitorTest {
         Filter containsFilter = ff.contains(ff.literal(geom), ff.property("geom"));
         Query q = new Query("counties", containsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_CONTAINS(ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true), geom)",
@@ -244,7 +253,8 @@ public class BigqueryFilterVisitorTest {
         Filter disjointFilter = ff.disjoint(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", disjointFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_DISJOINT(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true))",
@@ -258,7 +268,8 @@ public class BigqueryFilterVisitorTest {
         Filter touchesFilter = ff.touches(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", touchesFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_TOUCHES(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true))",
@@ -272,7 +283,8 @@ public class BigqueryFilterVisitorTest {
         Filter equalsFilter = ff.equal(ff.property("geom"), ff.literal(geom));
         Query q = new Query("counties", equalsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_EQUALS(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true))",
@@ -286,7 +298,8 @@ public class BigqueryFilterVisitorTest {
         Filter equalsFilter = ff.equal(ff.literal(geom), ff.property("geom"));
         Query q = new Query("counties", equalsFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_EQUALS(ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true), geom)",
@@ -308,19 +321,20 @@ public class BigqueryFilterVisitorTest {
         Query q2 = new Query("counties", withinFilter2);
         Query q3 = new Query("counties", withinFilter3);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q1, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q1, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_WITHIN(geom, ST_GEOGFROMGEOJSON('{\"type\":\"Polygon\",\"coordinates\":[[[-76.2,36.8],[-76.1,36.8],[-76.1,36.7],[-76.3,36.6],[-76.2,36.8]]]}', make_valid => true))",
                 parser.getWhereClause());
 
-        parser = new BigqueryFilterVisitor(q2, countiesFeatureType, CRS);
+        parser = new BigqueryFilterVisitor(q2, countiesFeatureType, CRS, pregenNone);
 
         assertEquals(
                 "ST_WITHIN(ST_GEOGFROMGEOJSON('{\"type\":\"Point\",\"coordinates\":[-76.2859,36.8508]}', make_valid => true), geom)",
                 parser.getWhereClause());
 
-        parser = new BigqueryFilterVisitor(q3, countiesFeatureType, CRS);
+        parser = new BigqueryFilterVisitor(q3, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("ST_WITHIN(geom2, geom1)", parser.getWhereClause());
     }
@@ -333,21 +347,22 @@ public class BigqueryFilterVisitorTest {
                 ff.equals(ff.property("name"), ff.property("population"));
         Query q = new Query("counties", stringEqualFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name = population", parser.getWhereClause());
 
         PropertyIsEqualTo intEqualFilter = ff.equals(ff.property("name"), ff.literal(7));
 
         q = new Query("counties", intEqualFilter);
-        parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name = 7", parser.getWhereClause());
 
         PropertyIsEqualTo floatEqualFilter = ff.equals(ff.property("name"), ff.literal(7.123));
 
         q = new Query("counties", floatEqualFilter);
-        parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name = 7.123", parser.getWhereClause());
     }
@@ -357,7 +372,8 @@ public class BigqueryFilterVisitorTest {
         PropertyIsEqualTo stringEqualFilter = ff.equals(ff.property("name"), ff.literal("abc"));
         Query q = new Query("counties", stringEqualFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name = 'abc'", parser.getWhereClause());
     }
@@ -367,7 +383,8 @@ public class BigqueryFilterVisitorTest {
         PropertyIsEqualTo stringEqualFilter = ff.equals(ff.literal("xyz"), ff.literal("abc"));
         Query q = new Query("counties", stringEqualFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("'xyz' = 'abc'", parser.getWhereClause());
     }
@@ -378,7 +395,8 @@ public class BigqueryFilterVisitorTest {
                 ff.notEqual(ff.property("name"), ff.property("population"));
         Query q = new Query("counties", notEqualFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name != population", parser.getWhereClause());
     }
@@ -388,7 +406,8 @@ public class BigqueryFilterVisitorTest {
         PropertyIsNull nullFilter = ff.isNull(ff.property("name"));
         Query q = new Query("counties", nullFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name IS NULL", parser.getWhereClause());
     }
@@ -400,7 +419,8 @@ public class BigqueryFilterVisitorTest {
         Not notFilter = ff.not(stringEqualFilter);
         Query q = new Query("counties", notFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("NOT ( name = 'abc' )", parser.getWhereClause());
     }
@@ -410,7 +430,8 @@ public class BigqueryFilterVisitorTest {
         PropertyIsGreaterThan gtFilter = ff.greater(ff.property("population"), ff.literal(100));
         Query q = new Query("counties", gtFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("population > 100", parser.getWhereClause());
     }
@@ -420,7 +441,8 @@ public class BigqueryFilterVisitorTest {
         PropertyIsLessThan ltFilter = ff.less(ff.property("population"), ff.literal(100.8));
         Query q = new Query("counties", ltFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("population < 100.8", parser.getWhereClause());
     }
@@ -431,7 +453,8 @@ public class BigqueryFilterVisitorTest {
                 ff.lessOrEqual(ff.property("population"), ff.literal(999));
         Query q = new Query("counties", ltFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("population <= 999", parser.getWhereClause());
     }
@@ -442,7 +465,8 @@ public class BigqueryFilterVisitorTest {
                 ff.greaterOrEqual(ff.property("population"), ff.literal(999));
         Query q = new Query("counties", gtFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("population >= 999", parser.getWhereClause());
     }
@@ -452,8 +476,26 @@ public class BigqueryFilterVisitorTest {
         PropertyIsLike likeFilter = ff.like(ff.property("name"), "nor%");
         Query q = new Query("counties", likeFilter);
 
-        BigqueryFilterVisitor parser = new BigqueryFilterVisitor(q, countiesFeatureType, CRS);
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
         assertEquals("name LIKE 'nor%'", parser.getWhereClause());
+    }
+
+    @Test
+    public void testSpatialBBOXWithSimplify() {
+        FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
+
+        BBOX bbox1 = ff.bbox("geom", -78.6785, 36.0049, -74.4158, 38.4493, "epsg:4326");
+
+        Query q = new Query("counties", bbox1);
+
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(
+                        q, countiesFeatureType, CRS, BigqueryPregenerateOptions.MV_10_METERS);
+
+        assertEquals(
+                "ST_INTERSECTSBOX(ST_SIMPLIFY(geom, 100), -78.678500, 36.004900, -74.415800, 38.449300)",
+                parser.getWhereClause());
     }
 }

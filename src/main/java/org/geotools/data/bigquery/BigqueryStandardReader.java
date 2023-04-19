@@ -64,7 +64,7 @@ public class BigqueryStandardReader extends BigqueryFeatureReader {
      */
     protected String getSQLFromGeotoolsQuery() {
         BigqueryFilterVisitor parser =
-                new BigqueryFilterVisitor(query, getFeatureType(), store.CRS);
+                new BigqueryFilterVisitor(query, getFeatureType(), store.CRS, store.pregen);
 
         String sql =
                 String.format(
@@ -73,6 +73,8 @@ public class BigqueryStandardReader extends BigqueryFeatureReader {
                         query.getTypeName(),
                         parser.getWhereClause(),
                         rowLimit);
+
+        System.out.println(sql);
 
         return sql;
     }

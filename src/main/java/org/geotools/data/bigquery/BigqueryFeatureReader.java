@@ -61,6 +61,8 @@ public abstract class BigqueryFeatureReader implements SimpleFeatureReader {
         this.rowIndex = -1;
         this.rowLimit = query.getMaxFeatures();
         this.query = decorateQuery(featureType, query);
+
+        System.out.println(query);
     }
 
     @Override
