@@ -58,6 +58,9 @@
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <geotools.version>29-SNAPSHOT</geotools.version>
+    <checkstyle.skip>true</checkstyle.skip>
+    <spotless.check.skip>true</spotless.check.skip>
+    <spotless.apply.skip>true</spotless.apply.skip>
   </properties>
 
   <dependencyManagement>

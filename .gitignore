@@ -4,3 +4,4 @@
 *.jar
 .spotless*
 target/*
+.settings/

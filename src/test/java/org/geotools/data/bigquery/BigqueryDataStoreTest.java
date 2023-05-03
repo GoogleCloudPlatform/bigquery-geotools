@@ -21,8 +21,11 @@ import static org.junit.Assert.assertTrue;
 
 import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.BigQueryOptions;
+import com.google.cloud.bigquery.FieldValueList;
 import com.google.cloud.bigquery.QueryJobConfiguration;
+import com.google.cloud.bigquery.TableResult;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -33,6 +36,7 @@ import org.geotools.data.FeatureReader;
 import org.geotools.data.Query;
 import org.geotools.data.Transaction;
 import org.geotools.data.simple.SimpleFeatureSource;
+import org.geotools.data.store.ContentFeatureSource;
 import org.geotools.geometry.jts.ReferencedEnvelope;
 import org.junit.Before;
 import org.junit.Test;
@@ -59,9 +63,9 @@ public class BigqueryDataStoreTest {
         QueryJobConfiguration qConfig3 = QueryJobConfiguration.newBuilder(sql3).build();
 
         try {
-            //    queryClient.query(qConfig1);
-            //    queryClient.query(qConfig2);
-            //    queryClient.query(qConfig3);
+            queryClient.query(qConfig1);
+            queryClient.query(qConfig2);
+            queryClient.query(qConfig3);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -166,6 +170,42 @@ public class BigqueryDataStoreTest {
             assertEquals("Polygon", geom.getGeometryType());
             assertTrue(1 < geom.getLength());
             assertEquals(4326, geom.getSRID());
+        }
+    }
+
+    @Test
+    public void testPregenerateMaterializedViews() throws IOException {
+        Map<String, Object> params = new HashMap<>();
+        params.put("Project Id", "bigquery-geotools");
+        params.put("Dataset Name", "test");
+        params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
+        params.put("Pregenerate Materialized Views", BigqueryPregenerateOptions.MV_1_METERS);
+
+        DataStore store = DataStoreFinder.getDataStore(params);
+        ContentFeatureSource fs =
+                (ContentFeatureSource) store.getFeatureSource("bigquery-geotools.test.counties");
+
+        BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
+        BigQuery queryClient = builder.setProjectId("bigquery-geotools").build().getService();
+
+        String sql = "select * from `bigquery-geotools.test.INFORMATION_SCHEMA.MATERIALIZED_VIEWS`";
+        QueryJobConfiguration qc = QueryJobConfiguration.newBuilder(sql).build();
+
+        try {
+            TableResult results = queryClient.query(qc);
+            List<String> foundViews = new ArrayList<String>();
+
+            for (FieldValueList row : results.iterateAll()) {
+                String viewName = row.get("table_name").getStringValue();
+                if (viewName.indexOf("pregen_") != -1) {
+                    foundViews.add(viewName);
+                }
+            }
+
+            assertEquals(3, foundViews.size());
+
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

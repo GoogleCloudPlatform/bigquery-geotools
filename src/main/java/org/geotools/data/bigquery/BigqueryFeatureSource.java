@@ -16,6 +16,28 @@
 
 package org.geotools.data.bigquery;
 
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.logging.Logger;
+
+import org.geotools.data.FeatureReader;
+import org.geotools.data.Query;
+import org.geotools.data.store.ContentEntry;
+import org.geotools.data.store.ContentFeatureSource;
+import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
+import org.geotools.geometry.jts.ReferencedEnvelope;
+import org.geotools.util.logging.Logging;
+import org.locationtech.jts.geom.Geometry;
+import org.opengis.feature.simple.SimpleFeature;
+import org.opengis.feature.simple.SimpleFeatureType;
+
+import com.google.cloud.bigquery.BigQuery;
 import com.google.cloud.bigquery.Clustering;
 import com.google.cloud.bigquery.Field;
 import com.google.cloud.bigquery.FieldList;
@@ -33,24 +55,6 @@ import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.TableResult;
 import com.google.cloud.bigquery.TimePartitioning;
 import com.google.common.collect.ImmutableMap;
-import java.io.IOException;
-import java.math.BigDecimal;
-import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.logging.Logger;
-import org.geotools.data.FeatureReader;
-import org.geotools.data.Query;
-import org.geotools.data.store.ContentEntry;
-import org.geotools.data.store.ContentFeatureSource;
-import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
-import org.geotools.geometry.jts.ReferencedEnvelope;
-import org.geotools.util.logging.Logging;
-import org.locationtech.jts.geom.Geometry;
-import org.opengis.feature.simple.SimpleFeature;
-import org.opengis.feature.simple.SimpleFeatureType;
 
 /**
  * Read-only access to a Bigquery table
@@ -88,9 +92,15 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
     public BigqueryFeatureSource(ContentEntry entry) throws IOException {
         super(entry, null);
 
-        tableName = getTableName();
-        geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
-        store = getDataStore();
+        this.tableName = getTableName();
+        this.geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
+        this.store = getDataStore();
+        
+        System.out.println(store.pregen);
+        
+        if (store.pregen != BigqueryPregenerateOptions.MV_NONE) {
+            createMaterializedViews();
+        }
     }
 
     protected String getTableName() {
@@ -217,5 +227,49 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         }
 
         return builder.buildFeatureType();
+    }
+    
+    public void createMaterializedViews () {
+        BigQuery client = getDataStore().queryClient;
+        String baseTable = entry.getTypeName();
+        
+        List<Integer> toleranceLevels = new ArrayList<Integer>();
+        
+        if (store.pregen == BigqueryPregenerateOptions.MV_100_METERS) {
+            toleranceLevels.add(100);
+        }
+        else if (store.pregen == BigqueryPregenerateOptions.MV_10_METERS) {
+            toleranceLevels.addAll(Arrays.asList(100, 10));
+        }
+        else if (store.pregen == BigqueryPregenerateOptions.MV_1_METERS) {
+            toleranceLevels.addAll(Arrays.asList(100, 10, 1));
+        }
+        
+        String sql = 
+        	"create materialized view if not exists `" + baseTable + "_pregen_%sm` " +
+        	"cluster by " + geomColumn + " as (" +
+        	    "select * except(" + geomColumn + "), " +
+        	    "st_simplify(" + geomColumn + ", %d) as "+ geomColumn +", " +
+        	    "st_asgeojson(st_simplify(" + geomColumn + ", %d)) as geom_geojson " +
+        	    "from `" + baseTable + "`)";
+        
+        for (int tolerance : toleranceLevels) {
+            String mvSql = String.format(sql, tolerance, tolerance, tolerance);
+            System.out.println(mvSql);
+            QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(mvSql).build();
+            
+            try {
+        	client.query(queryConfig);
+            }
+            catch(JobException e) {
+                e.printStackTrace();
+            }
+            catch(InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        
+        
+
     }
 }

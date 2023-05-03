@@ -64,7 +64,7 @@ public class BigqueryDataStoreFactory implements DataStoreFactorySpi {
 
     public static final Param PREGENERATE_VIEWS =
             new Param(
-                    "Pregenerate Materialized Views with simplified geometries",
+                    "Pregenerate Materialized Views",
                     BigqueryPregenerateOptions.class,
                     "Pregenerate Materialized Views with simplified geometries",
                     false,
