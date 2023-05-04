@@ -492,7 +492,7 @@ public class BigqueryFilterVisitorTest {
 
         BigqueryFilterVisitor parser =
                 new BigqueryFilterVisitor(
-                        q, countiesFeatureType, CRS, BigqueryPregenerateOptions.MV_10_METERS);
+                        q, countiesFeatureType, CRS, BigqueryPregenerateOptions.MV_USE_EXISTING);
 
         assertEquals(
                 "ST_INTERSECTSBOX(ST_SIMPLIFY(geom, 100), -78.678500, 36.004900, -74.415800, 38.449300)",

@@ -57,15 +57,20 @@ public class BigqueryDataStoreTest {
                 "drop materialized view if exists `bigquery-geotools.test.counties_pregen_10m`";
         String sql3 =
                 "drop materialized view if exists `bigquery-geotools.test.counties_pregen_100m`";
+        String sql4 =
+                "drop materialized view if exists `bigquery-geotools.test.counties_pregen_1000m`";
 
         QueryJobConfiguration qConfig1 = QueryJobConfiguration.newBuilder(sql1).build();
         QueryJobConfiguration qConfig2 = QueryJobConfiguration.newBuilder(sql2).build();
         QueryJobConfiguration qConfig3 = QueryJobConfiguration.newBuilder(sql3).build();
+        QueryJobConfiguration qConfig4 = QueryJobConfiguration.newBuilder(sql4).build();
+
 
         try {
             queryClient.query(qConfig1);
             queryClient.query(qConfig2);
             queryClient.query(qConfig3);
+            queryClient.query(qConfig4);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -179,7 +184,7 @@ public class BigqueryDataStoreTest {
         params.put("Project Id", "bigquery-geotools");
         params.put("Dataset Name", "test");
         params.put("Access Method", BigqueryAccessMethod.STANDARD_QUERY_API);
-        params.put("Pregenerate Materialized Views", BigqueryPregenerateOptions.MV_1_METERS);
+        params.put("Pregenerate Materialized Views", BigqueryPregenerateOptions.MV_PREGEN_ALL);
 
         DataStore store = DataStoreFinder.getDataStore(params);
         ContentFeatureSource fs =
@@ -200,12 +205,12 @@ public class BigqueryDataStoreTest {
 
             for (FieldValueList row : results.iterateAll()) {
                 String viewName = row.get("table_name").getStringValue();
-                if (viewName.indexOf("pregen_") != -1) {
+                if (viewName.indexOf("_pregen_") != -1) {
                     foundViews.add(viewName);
                 }
             }
 
-            assertEquals(3, foundViews.size());
+            assertEquals(4, foundViews.size());
 
         } catch (Exception e) {
             e.printStackTrace();

@@ -30,6 +30,7 @@ import com.google.cloud.bigquery.Schema;
 import com.google.cloud.bigquery.StandardSQLTypeName;
 import com.google.cloud.bigquery.Table;
 import com.google.cloud.bigquery.TableDefinition;
+import com.google.cloud.bigquery.TableId;
 import com.google.cloud.bigquery.storage.v1.BigQueryReadClient;
 import com.google.cloud.bigquery.storage.v1.BigQueryReadSettings;
 import com.google.common.collect.ImmutableMap;
@@ -144,13 +145,15 @@ public class BigqueryDataStore extends ContentDataStore {
         try {
             Page<Table> tables = queryClient.listTables(datasetName, TableListOption.pageSize(100));
             for (Table table : tables.iterateAll()) {
-                Table hydratedTable = queryClient.getTable(table.getTableId());
+        	TableId tableId = table.getTableId();
+                Table hydratedTable = queryClient.getTable(tableId);
                 TableDefinition tableDef = hydratedTable.getDefinition();
                 Schema schema = tableDef.getSchema();
                 TableDefinition.Type type = tableDef.getType();
                 String geomColumn = getTableGeometryColumn(schema);
 
-                if (TABLE_TYPE_MAP.containsKey(type) && null != geomColumn) {
+                if (TABLE_TYPE_MAP.containsKey(type) && null != geomColumn
+                	&& tableId.toString().indexOf("_pregen_") == -1) {
                     typeNames.add(new NameImpl(getTypeLabel(table.getGeneratedId())));
                 }
             }

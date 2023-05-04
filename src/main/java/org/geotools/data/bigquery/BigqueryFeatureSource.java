@@ -93,7 +93,6 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         super(entry, null);
 
         this.tableName = getTableName();
-        //this.geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
         this.store = getDataStore();
     }
 
@@ -107,10 +106,13 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         return (BigqueryDataStore) super.getDataStore();
     }
 
-    
     @Override
     protected ReferencedEnvelope getBoundsInternal(Query query) throws IOException {
         Table tableRef = store.queryClient.getTable(TableId.of(store.datasetName, tableName));
+        
+        if (null == geomColumn) {
+            geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
+        }
 
         String sql =
                 String.format(
@@ -222,7 +224,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                     .add(timePartitionField, Date.class);
         }
                 
-        if (store.pregen != BigqueryPregenerateOptions.MV_NONE) {
+        if (store.pregen == BigqueryPregenerateOptions.MV_PREGEN_ALL) {
             createMaterializedViews();
         }
 
@@ -233,29 +235,17 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         BigQuery client = getDataStore().queryClient;
         String baseTable = entry.getTypeName();
         
-        BigqueryDataStore store = (BigqueryDataStore)entry.getDataStore();
-        
-        List<Integer> toleranceLevels = new ArrayList<Integer>();
-        
-        if (store.pregen == BigqueryPregenerateOptions.MV_100_METERS) {
-            toleranceLevels.add(100);
-        }
-        else if (store.pregen == BigqueryPregenerateOptions.MV_10_METERS) {
-            toleranceLevels.addAll(Arrays.asList(100, 10));
-        }
-        else if (store.pregen == BigqueryPregenerateOptions.MV_1_METERS) {
-            toleranceLevels.addAll(Arrays.asList(100, 10, 1));
-        }
-        
-        String sql = 
-        	"create materialized view if not exists `" + baseTable + "_pregen_%sm` " +
-        	"cluster by " + geomColumn + " as (" +
-        	    "select * except(" + geomColumn + "), " +
-        	    "st_simplify(" + geomColumn + ", %d) as "+ geomColumn +", " +
-        	    "st_asgeojson(st_simplify(" + geomColumn + ", %d)) as geom_geojson " +
-        	    "from `" + baseTable + "`)";
-        
-        for (int tolerance : toleranceLevels) {
+        List<Integer> tolerances = new ArrayList<Integer>(List.of(1, 10, 100, 1000));
+
+        for (int tolerance : tolerances) {
+            String sql = 
+            	"create materialized view if not exists `" + baseTable + "_pregen_%sm` " +
+            	"cluster by " + geomColumn + " as (" +
+            	    "select * except(" + geomColumn + "), " +
+            	    "st_simplify(" + geomColumn + ", %d) as "+ geomColumn +", " +
+            	    "st_asgeojson(st_simplify(" + geomColumn + ", %d)) as geom_geojson " +
+            	    "from `" + baseTable + "`)";
+            
             String mvSql = String.format(sql, tolerance, tolerance, tolerance);
             QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(mvSql).build();
             
@@ -269,8 +259,5 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                 e.printStackTrace();
             }
         }
-        
-        
-
     }
 }

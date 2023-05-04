@@ -17,15 +17,12 @@
 package org.geotools.data.bigquery;
 
 public enum BigqueryPregenerateOptions {
-    /** Do not create any pregenerated materialized views */
+    /** Do not create or use any pregenerated materialized views */
     MV_NONE,
+    
+    /** utilize any existing materialized views, but do not generate any. */
+    MV_USE_EXISTING,
 
-    /** Create a pregenerated materialized view using ST_SIMPLIFY(geom, 1) */
-    MV_1_METERS,
-
-    /** Create a pregenerated materialized view using ST_SIMPLIFY(geom, 10) */
-    MV_10_METERS,
-
-    /** Create a pregenerated materialized view using ST_SIMPLIFY(geom, 100) */
-    MV_100_METERS
+    /** pregenerate 4 tables of simplified geometries at tolerances 1m, 10m, 100m, and 1000m. */
+    MV_PREGEN_ALL
 }
