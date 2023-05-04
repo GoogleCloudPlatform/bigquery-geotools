@@ -185,6 +185,9 @@ public class BigqueryDataStoreTest {
         ContentFeatureSource fs =
                 (ContentFeatureSource) store.getFeatureSource("bigquery-geotools.test.counties");
 
+        // invokes buildFeatureType()
+        fs.getSchema();
+        
         BigQueryOptions.Builder builder = BigQueryOptions.newBuilder();
         BigQuery queryClient = builder.setProjectId("bigquery-geotools").build().getService();
 

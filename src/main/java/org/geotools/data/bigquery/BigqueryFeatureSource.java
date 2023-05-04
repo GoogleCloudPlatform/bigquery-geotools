@@ -85,7 +85,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                     .put(StandardSQLTypeName.JSON, String.class)
                     .build();
 
-    private final String geomColumn;
+    private String geomColumn;
     private final String tableName;
     private final BigqueryDataStore store;
 
@@ -93,14 +93,8 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         super(entry, null);
 
         this.tableName = getTableName();
-        this.geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
+        //this.geomColumn = getAbsoluteSchema().getGeometryDescriptor().getLocalName();
         this.store = getDataStore();
-        
-        System.out.println(store.pregen);
-        
-        if (store.pregen != BigqueryPregenerateOptions.MV_NONE) {
-            createMaterializedViews();
-        }
     }
 
     protected String getTableName() {
@@ -113,6 +107,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         return (BigqueryDataStore) super.getDataStore();
     }
 
+    
     @Override
     protected ReferencedEnvelope getBoundsInternal(Query query) throws IOException {
         Table tableRef = store.queryClient.getTable(TableId.of(store.datasetName, tableName));
@@ -217,6 +212,7 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
 
             if (fieldType == Geometry.class) {
                 builder.setDefaultGeometry(fieldName);
+                this.geomColumn = fieldName;
             }
         }
 
@@ -225,6 +221,10 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                     .userData("partitioningRequired", partitionRequired)
                     .add(timePartitionField, Date.class);
         }
+                
+        if (store.pregen != BigqueryPregenerateOptions.MV_NONE) {
+            createMaterializedViews();
+        }
 
         return builder.buildFeatureType();
     }
@@ -232,6 +232,8 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
     public void createMaterializedViews () {
         BigQuery client = getDataStore().queryClient;
         String baseTable = entry.getTypeName();
+        
+        BigqueryDataStore store = (BigqueryDataStore)entry.getDataStore();
         
         List<Integer> toleranceLevels = new ArrayList<Integer>();
         
@@ -255,7 +257,6 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
         
         for (int tolerance : toleranceLevels) {
             String mvSql = String.format(sql, tolerance, tolerance, tolerance);
-            System.out.println(mvSql);
             QueryJobConfiguration queryConfig = QueryJobConfiguration.newBuilder(mvSql).build();
             
             try {
