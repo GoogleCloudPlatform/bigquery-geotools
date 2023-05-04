@@ -52,6 +52,16 @@ Create a new data soruce he same way as other databases. Under `Stores`, select 
 
 Now, you will configure the connection to a [BigQuery dataset](https://cloud.google.com/bigquery/docs/datasets-intro). Datasets can contain many tables, and are roughly analogous to [PostGIS schemas](https://postgis.net/workshops/postgis-intro/schemas.html).
 
+#### Pregenerate Materialized Views
+
+The `Pregenerate Materialized Views` setting will do one of the following:
+- `MV_NONE`: do not generate or utilize any pregenerated materialized views.
+- `MV_USE_EXISTING`: utilize any [existing materialized views](https://github.com/GoogleCloudPlatform/bigquery-geotools/blob/main/src/sample/create_pregen_views.sql), but do not generate any. 
+- `MV_PREGEN_ALL`: pregenerate 4 tables of simplified geometries at tolerances `1m`, `10m`, `100m`, and `1000m`.
+
+To generate materialized views manually, see this [sample SQL](https://github.com/GoogleCloudPlatform/bigquery-geotools/blob/main/src/sample/create_pregen_views.sql).
+
+
 <img src="https://storage.googleapis.com/bigquery-geotools-public/config_bq_datasource_1.png" width=480>
 
 ### 3. Add and configure layer
