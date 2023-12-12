@@ -51,6 +51,7 @@ import org.opengis.filter.PropertyIsLike;
 import org.opengis.filter.PropertyIsNil;
 import org.opengis.filter.PropertyIsNotEqualTo;
 import org.opengis.filter.PropertyIsNull;
+import org.opengis.filter.expression.Expression;
 import org.opengis.filter.spatial.BBOX;
 import org.opengis.filter.spatial.Beyond;
 import org.opengis.filter.spatial.BinarySpatialOperator;
@@ -558,7 +559,16 @@ public class BigqueryFilterVisitor implements FilterVisitor {
 
     @Override
     public Object visit(PropertyIsBetween filter, Object extraData) {
-        throw new UnsupportedOperationException();
+        clauseFragments.add("BETWEEN ");
+        Expression startDate = filter.getLowerBoundary();
+        Expression endDate = filter.getUpperBoundary();
+
+        if(startDate !=null && endDate != null) {
+            clauseFragments.add(startDate.toString());
+            clauseFragments.add(" AND ");
+            clauseFragments.add(endDate.toString());
+        }
+        return null;
     }
 
     // HANDLED ELSEWHERE
