@@ -25,7 +25,7 @@ RUN chmod +x filestore_run.sh
 
 # install bigquery-geotools driver
 RUN wget https://console.cloud.google.com/storage/browser/foci-geotools/zipfile-gt-bigquery.zip\
-  && unzip zipfile-bigquery-geotools.zip \
+  && unzip zipfile-gt-bigquery.zip \
   && cp *.jar $GEOSERVER_LIB_DIR
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
