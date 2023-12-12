@@ -462,9 +462,12 @@ public class BigqueryFilterVisitor implements FilterVisitor {
 
     @Override
     public Object visit(PropertyIsBetween filter, Object extraData) {
-        clauseFragments.add("BETWEEN ");
-        Expression startDate = filter.getLowerBoundary();
-        Expression endDate = filter.getUpperBoundary();
+        
+        String propertyName = resolveValue(filter.getExpression()); 
+        String startDate = resolveValue(filter.getLowerBoundary());
+        String endDate = resolveValue(filter.getUpperBoundary());
+        
+        clauseFragments.add(propertyName + " BETWEEN ");
 
         if(startDate !=null && endDate != null) {
             clauseFragments.add(startDate.toString());
