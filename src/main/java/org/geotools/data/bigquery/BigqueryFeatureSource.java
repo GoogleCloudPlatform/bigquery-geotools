@@ -19,6 +19,10 @@ package org.geotools.data.bigquery;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
+import java.sql.Time;
+import java.sql.Timestamp;
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Date;
@@ -75,9 +79,9 @@ public class BigqueryFeatureSource extends ContentFeatureSource {
                     .put(StandardSQLTypeName.NUMERIC, BigDecimal.class)
                     .put(StandardSQLTypeName.STRING, String.class)
                     .put(StandardSQLTypeName.DATE, Date.class)
-                    .put(StandardSQLTypeName.DATETIME, Date.class)
-                    .put(StandardSQLTypeName.TIME, Date.class)
-                    .put(StandardSQLTypeName.TIMESTAMP, Date.class)
+                    .put(StandardSQLTypeName.DATETIME, LocalDateTime.class)
+                    .put(StandardSQLTypeName.TIME, Instant.class)
+                    .put(StandardSQLTypeName.TIMESTAMP, Timestamp.class)
                     .put(StandardSQLTypeName.BYTES, String.class)
                     .put(StandardSQLTypeName.ARRAY, List.class)
                     .put(StandardSQLTypeName.INTERVAL, String.class)
