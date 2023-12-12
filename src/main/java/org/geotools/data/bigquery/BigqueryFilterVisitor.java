@@ -459,6 +459,20 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         return null;
     }
 
+    @Override
+    public Object visit(PropertyIsBetween filter, Object extraData) {
+        clauseFragments.add("BETWEEN ");
+        Expression startDate = filter.getLowerBoundary();
+        Expression endDate = filter.getUpperBoundary();
+
+        if(startDate !=null && endDate != null) {
+            clauseFragments.add(startDate.toString());
+            clauseFragments.add(" AND ");
+            clauseFragments.add(endDate.toString());
+        }
+        return null;
+    }
+
     // UNSUPPORTED
 
     @Override
@@ -553,11 +567,6 @@ public class BigqueryFilterVisitor implements FilterVisitor {
 
     @Override
     public Object visit(TOverlaps contains, Object extraData) {
-        throw new UnsupportedOperationException();
-    }
-
-    @Override
-    public Object visit(PropertyIsBetween filter, Object extraData) {
         throw new UnsupportedOperationException();
     }
 

@@ -20,7 +20,7 @@
   <parent>
     <groupId>org.geotools</groupId>
     <artifactId>plugin</artifactId>
-    <version>30-SNAPSHOT</version>
+    <version>29-SNAPSHOT</version>
   </parent>
 
   <artifactId>gt-bigquery</artifactId>
@@ -41,7 +41,7 @@
     </developer>
   </developers>
 
-  <distributionManagement>
+  <!-- <distributionManagement>
     <repository>
       <id>artifact-registry</id>
       <url>artifactregistry://us-central1-maven.pkg.dev/bigquery-geotools/bigquery-geotools</url>
@@ -50,14 +50,14 @@
       <id>artifact-registry</id>
       <url>artifactregistry://us-central1-maven.pkg.dev/bigquery-geotools/bigquery-geotools</url>
     </snapshotRepository>
-  </distributionManagement>
+  </distributionManagement> -->
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.source>1.8</maven.compiler.source>
     <maven.compiler.target>1.8</maven.compiler.target>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <geotools.version>30-SNAPSHOT</geotools.version>
+    <geotools.version>29-SNAPSHOT</geotools.version>
     <checkstyle.skip>true</checkstyle.skip>
     <spotless.check.skip>true</spotless.check.skip>
     <spotless.apply.skip>true</spotless.apply.skip>
@@ -73,7 +73,7 @@
       <dependency>
         <groupId>com.google.cloud</groupId>
         <artifactId>libraries-bom</artifactId>
-        <version>26.11.0</version>
+        <version>26.28.0</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
@@ -156,7 +156,7 @@
       <name>OSGeo Snapshot Repository</name>
       <url>https://repo.osgeo.org/repository/snapshot/</url>
     </repository>
-    <repository>
+    <!-- <repository>
       <releases>
         <enabled>true</enabled>
       </releases>
@@ -165,7 +165,7 @@
       </snapshots>
       <id>artifact-registry</id>
       <url>artifactregistry://us-central1-maven.pkg.dev/bigquery-geotools/bigquery-geotools</url>
-    </repository>
+    </repository> -->
   </repositories>
 
   <build>
