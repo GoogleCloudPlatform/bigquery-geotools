@@ -18,7 +18,10 @@ package org.geotools.data.bigquery;
 
 import static org.junit.Assert.assertEquals;
 
+import java.util.Calendar;
 import java.util.Date;
+import java.util.GregorianCalendar;
+
 import org.geotools.data.Query;
 import org.geotools.factory.CommonFactoryFinder;
 import org.geotools.feature.simple.SimpleFeatureTypeBuilder;
@@ -501,16 +504,36 @@ public class BigqueryFilterVisitorTest {
     }
 
     @Test
-    public void testPropertyBetweenFilter() throws ParseException {
+    public void testDatePropertyBetweenFilter() throws ParseException {
         FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
 
+        Date lowerDate = new GregorianCalendar(2021, Calendar.JANUARY, 1).getTime();
+        Date upperDate = new GregorianCalendar(2021, Calendar.DECEMBER, 31).getTime();
+
         PropertyIsBetween betweenFilter =
-                ff.between(ff.property("population"), ff.literal(100), ff.literal(200));
+                ff.between(ff.property("population"), ff.literal(lowerDate), ff.literal(upperDate));
         Query q = new Query("counties", betweenFilter);
 
         BigqueryFilterVisitor parser =
                 new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
 
-        assertEquals("population BETWEEN 2022-01-01 AND 2022-12-31", parser.getWhereClause());
+        assertEquals("population BETWEEN '2021-01-01' AND '2021-12-31'", parser.getWhereClause());
+    }
+
+    @Test
+    public void testIntegerPropertyBetweenFilter() throws ParseException {
+        FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
+
+        Integer lower = 1;
+        Integer upper = 100;
+
+        PropertyIsBetween betweenFilter =
+                ff.between(ff.property("population"), ff.literal(lower), ff.literal(upper));
+        Query q = new Query("counties", betweenFilter);
+
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
+
+        assertEquals("population BETWEEN 1 AND 100", parser.getWhereClause());
     }
 }

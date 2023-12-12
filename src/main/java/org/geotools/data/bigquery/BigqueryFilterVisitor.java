@@ -197,8 +197,6 @@ public class BigqueryFilterVisitor implements FilterVisitor {
      * and ready to be inserted into a clause template.
      *
      * @param filter
-     * @param e1
-     * @param e2
      * @return
      */
     private String[] getArgsFromBinaryFilter(Filter filter) {
@@ -462,17 +460,20 @@ public class BigqueryFilterVisitor implements FilterVisitor {
 
     @Override
     public Object visit(PropertyIsBetween filter, Object extraData) {
-        
-        String propertyName = resolveValue(filter.getExpression()); 
-        String startDate = resolveValue(filter.getLowerBoundary());
-        String endDate = resolveValue(filter.getUpperBoundary());
-        
-        clauseFragments.add(propertyName + " BETWEEN ");
 
-        if(startDate !=null && endDate != null) {
-            clauseFragments.add(startDate.toString());
-            clauseFragments.add(" AND ");
-            clauseFragments.add(endDate.toString());
+        FilterAttributeExtractor extractor = new FilterAttributeExtractor(schema);
+        filter.accept(extractor, null);
+        String propertyName = extractor.getAttributeNames()[0];
+
+        String lower = resolveValue(filter.getLowerBoundary().evaluate(schema));
+        String upper = resolveValue(filter.getUpperBoundary().evaluate(schema));
+        
+        clauseFragments.add(propertyName + " BETWEEN");
+
+        if(lower !=null && upper != null) {
+            clauseFragments.add(lower);
+            clauseFragments.add("AND");
+            clauseFragments.add(upper);
         }
         return null;
     }
