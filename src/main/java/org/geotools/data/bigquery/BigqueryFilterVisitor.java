@@ -23,6 +23,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.Deque;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.geotools.data.Query;
 import org.geotools.filter.FilterAttributeExtractor;
@@ -470,6 +471,9 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         
         clauseFragments.add(propertyName + " BETWEEN");
 
+        LOGGER.log(Level.FINER, "BETWEEN query lower: " + lower);
+        LOGGER.log(Level.FINER,"BETWEEN query upper: " + upper);
+        
         if(lower !=null && upper != null) {
             clauseFragments.add(lower);
             clauseFragments.add("AND");
