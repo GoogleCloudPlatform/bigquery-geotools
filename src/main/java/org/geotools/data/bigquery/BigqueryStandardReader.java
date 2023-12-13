@@ -16,18 +16,19 @@
 
 package org.geotools.data.bigquery;
 
-import com.google.cloud.bigquery.FieldValueList;
-import com.google.cloud.bigquery.QueryJobConfiguration;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.logging.Logger;
+
 import org.geotools.data.Query;
 import org.geotools.data.store.ContentState;
 import org.geotools.feature.simple.SimpleFeatureBuilder;
@@ -36,6 +37,10 @@ import org.geotools.util.logging.Logging;
 import org.locationtech.jts.geom.Geometry;
 import org.opengis.feature.simple.SimpleFeature;
 import org.opengis.feature.type.AttributeDescriptor;
+
+import com.google.cloud.bigquery.FieldValue;
+import com.google.cloud.bigquery.FieldValueList;
+import com.google.cloud.bigquery.QueryJobConfiguration;
 
 @SuppressWarnings("deprecation")
 public class BigqueryStandardReader extends BigqueryFeatureReader {
@@ -92,6 +97,45 @@ public class BigqueryStandardReader extends BigqueryFeatureReader {
         return cursor.hasNext();
     }
 
+    /**
+     * Tries to find a matching getter, using Reflection,
+     * for the AttributeDescriptor and returns the value.
+     * @param 
+     * @return
+     * @throws IOException
+     */
+    protected class AttributeValueGetter{
+
+        private final AttributeDescriptor attr;
+        private final FieldValueList row;
+
+        public AttributeValueGetter(AttributeDescriptor attr, FieldValueList row) {
+            this.attr = attr;
+            this.row = row;
+        }
+
+        public Method getValueGetter() throws NoSuchMethodException  {
+            String column = attr.getLocalName();
+            FieldValue value = row.get(column);
+
+            if (value.isNull()) {
+                return null;
+            }
+
+            // Using reflection, try to find if there is a getter for that type in the
+            // type in the FieldValue class.
+            try {
+                
+                String typeName = attr.getType().getBinding().getSimpleName();
+                return value.getClass().getMethod("get" + typeName + "Value");
+
+            } catch (Exception e) {
+                return value.getClass().getMethod("getValue");
+            }
+        }
+    }
+
+
     protected SimpleFeature parseFeature(FieldValueList row) throws IOException {
         SimpleFeatureBuilder builder = new SimpleFeatureBuilder(featureType);
 
@@ -105,7 +149,23 @@ public class BigqueryStandardReader extends BigqueryFeatureReader {
             if (!query.retrieveAllProperties() && !returnedColumns.contains(column)) continue;
             if (column == geomColumn) continue;
 
-            builder.set(column, row.get(column).getValue());
+            try {
+                AttributeValueGetter getter = new AttributeValueGetter(attr, row);
+                Method getterMethod = getter.getValueGetter();
+                if (getterMethod == null) continue;
+
+                // If this is a timestamp - it returns a long, but we want an Instant.
+                if (getterMethod.getName().equals("getTimestampValue")) {
+                    Object value = getterMethod.invoke(row.get(column));
+                    String iso8601Date = Instant.ofEpochMilli((long) value).toString();
+                    builder.set(column, iso8601Date);
+                    continue;
+                }
+                Object value = getterMethod.invoke(row.get(column));
+                builder.set(column, value);
+            } catch (Exception e) {
+                builder.set(column, row.get(column).getValue());
+            }
         }
 
         try {
