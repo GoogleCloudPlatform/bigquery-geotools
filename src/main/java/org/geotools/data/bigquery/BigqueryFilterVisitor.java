@@ -186,7 +186,7 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         } else if (value instanceof Double) {
             return Double.toString((Double) value);
         } else if (value instanceof Date) {
-            return "'" + new SimpleDateFormat("yyyy-MM-dd").format(value) + "'";
+            return "TIMESTAMP '" + new SimpleDateFormat("yyyy-MM-dd HH:mm:ss z").format(value) + "'";
 
         } else {
             return (String) value;
@@ -470,9 +470,6 @@ public class BigqueryFilterVisitor implements FilterVisitor {
         String upper = resolveValue(filter.getUpperBoundary().evaluate(schema));
         
         clauseFragments.add(propertyName + " BETWEEN");
-
-        LOGGER.log(Level.FINER, "BETWEEN query lower: " + lower);
-        LOGGER.log(Level.FINER,"BETWEEN query upper: " + upper);
         
         if(lower !=null && upper != null) {
             clauseFragments.add(lower);

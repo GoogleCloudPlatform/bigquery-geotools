@@ -157,7 +157,7 @@ public class BigqueryStandardReader extends BigqueryFeatureReader {
                 // If this is a timestamp - it returns a long, but we want an Instant.
                 if (getterMethod.getName().equals("getTimestampValue")) {
                     Object value = getterMethod.invoke(row.get(column));
-                    String iso8601Date = Instant.ofEpochMilli((long) value).toString();
+                    String iso8601Date = Instant.ofEpochMilli((long) value/1000).toString();
                     builder.set(column, iso8601Date);
                     continue;
                 }
