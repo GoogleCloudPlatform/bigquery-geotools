@@ -40,6 +40,7 @@ import org.opengis.filter.Filter;
 import org.opengis.filter.FilterFactory;
 import org.opengis.filter.FilterFactory2;
 import org.opengis.filter.Not;
+import org.opengis.filter.PropertyIsBetween;
 import org.opengis.filter.PropertyIsEqualTo;
 import org.opengis.filter.PropertyIsGreaterThan;
 import org.opengis.filter.PropertyIsGreaterThanOrEqualTo;
@@ -497,5 +498,19 @@ public class BigqueryFilterVisitorTest {
         assertEquals(
                 "ST_INTERSECTSBOX(ST_SIMPLIFY(geom, 100), -78.678500, 36.004900, -74.415800, 38.449300)",
                 parser.getWhereClause());
+    }
+
+    @Test
+    public void testPropertyBetweenFilter() throws ParseException {
+        FilterFactory ff = CommonFactoryFinder.getFilterFactory(null);
+
+        PropertyIsBetween betweenFilter =
+                ff.between(ff.property("population"), ff.literal(100), ff.literal(200));
+        Query q = new Query("counties", betweenFilter);
+
+        BigqueryFilterVisitor parser =
+                new BigqueryFilterVisitor(q, countiesFeatureType, CRS, pregenNone);
+
+        assertEquals("population BETWEEN 2022-01-01 AND 2022-12-31", parser.getWhereClause());
     }
 }
